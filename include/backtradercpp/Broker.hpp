@@ -430,13 +430,13 @@ inline void backtradercpp::broker::BaseBrokerImplLogUtil::set_log_dir(const std:
     this->name = name;
     transaction_file_ =
         std::ofstream(std::filesystem::path(dir) /
-                      std::filesystem ::path(std::format("Transaction_{}.csv", name)));
+                      std::filesystem ::path(fmt::format("Transaction_{}.csv", name)));
     transaction_file_ << "Date, CashBefore,  ID, Code, PositionBefore,  Direction, Volume, Price, "
                          "Value, Fee, PositionAfter, CashAfter,  Info"
                       << std::endl;
 
     position_file_ = std::ofstream(std::filesystem::path(dir) /
-                                   std::filesystem ::path(std::format("Position_{}.csv", name)));
+                                   std::filesystem ::path(fmt::format("Position_{}.csv", name)));
     position_file_ << "Date, ID, Code, Position, Price, Value, State" << std::endl;
 }
 
@@ -553,7 +553,7 @@ void BaseBrokerImpl::update_info() {
         std::cerr << e.what() << '\n';
     }
     
-    log_util_.write_position(std::format("{}, {}, {}, {}, {}, {}, {}",
+    log_util_.write_position(fmt::format("{}, {}, {}, {}, {}, {}, {}",
                                          util::to_string(current_->time), "", "Cash", "", "",
                                          portfolio_.cash, ""));
 
@@ -565,7 +565,7 @@ void BaseBrokerImpl::update_info() {
         } else {
             state = "Invalid";
         }
-    //     log_util_.write_position(std::format("{}, {}, {}, {}, {}, {}, {}",
+    //     log_util_.write_position(fmt::format("{}, {}, {}, {}, {}, {}, {}",
     //                                          util::to_string(current_->time), asset, codes_[asset],
     //                                          item.position, item.prev_price, item.value, state));
     }
@@ -635,7 +635,7 @@ void StockBrokerImpl::process_trems() {
         double cash_after = portfolio_.cash;
 
         log_util_.write_transaction(
-            std::format("{}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}",
+            fmt::format("{}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}",
                         util::to_string(ptime(dt)), cash_before, cd, codes_[cd], position_before,
                         "", vol, 0, cash, "", position_after, cash_after, "XRD"));
     }
@@ -770,7 +770,7 @@ void BrokerAggragator::_write_log() {
         // 确保 wealth_ 是有效的
 
         // 格式化字符串并输出调试信息
-        std::string log_entry = std::format("{}, {}", util::to_string(last_time), wealth_);
+        std::string log_entry = fmt::format("{}, {}", util::to_string(last_time), wealth_);
         
         *wealth_file_ << log_entry;
         // std::cout << "write log format string finish ..." << std::endl;
@@ -783,7 +783,7 @@ void BrokerAggragator::_write_log() {
         double holding_value = values_[i].sum();
 
         // 格式化字符串并输出调试信息
-        std::string broker_log_entry = std::format(", {}, {}, {}", cash, holding_value, cash + holding_value);
+        std::string broker_log_entry = fmt::format(", {}, {}, {}", cash, holding_value, cash + holding_value);
         
         *wealth_file_ << broker_log_entry;
     }
@@ -793,7 +793,7 @@ void BrokerAggragator::_write_log() {
 // void BrokerAggragator::_write_log() {
 //     try{
 //     std::cout << "write_log started ..." << std::endl;
-//     *wealth_file_ << std::format("{}, {}", util::to_string(times_.back()), wealth_);
+//     *wealth_file_ << fmt::format("{}, {}", util::to_string(times_.back()), wealth_);
 //     std::cout << "write log format string finish ..." << std::endl;
 //     }catch (const std::exception& e) {
 //                 std::cerr << "錯誤: - " << e.what() << '\n';
@@ -806,7 +806,7 @@ void BrokerAggragator::_write_log() {
 //         std::cout << "test 203" << std::endl;
 //         double holding_value = values_[i].sum();
 //         std::cout << "test 204" << std::endl;
-//         *wealth_file_ << std::format(", {}, {}, {}", cash, holding_value, cash + holding_value);
+//         *wealth_file_ << fmt::format(", {}, {}, {}", cash, holding_value, cash + holding_value);
 //         std::cout << "test 205" << std::endl;
 //     }
 //     *wealth_file_ << std::endl;
@@ -841,7 +841,7 @@ inline void BrokerAggragator::set_log_dir(const std::string &dir) {
     *wealth_file_ << "Date, TotalValue";
     for (int i = 0; i < brokers_.size(); ++i) {
         const auto &name_ = brokers_[i].name(i);
-        *wealth_file_ << std::format(
+        *wealth_file_ << fmt::format(
             ", Broker_{}_Cash, Broker_{}_HoldingValue, Broker_{}_TotalValue", name_, name_, name_);
     }
     *wealth_file_ << std::endl;

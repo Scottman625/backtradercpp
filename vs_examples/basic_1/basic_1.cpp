@@ -141,7 +141,6 @@ void setConsoleUtf8() {
 
 void runBacktrader(const std::vector<std::vector<std::string>>& data, 
                    const std::vector<std::string>& columns ) {
-    SetConsoleOutputCP(CP_UTF8);
     // std::cout << "Running runBacktrader" << std::endl;
 
     try {
