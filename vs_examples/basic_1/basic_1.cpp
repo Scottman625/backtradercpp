@@ -11,7 +11,7 @@
 #include <chrono>
 #include <memory>
 #include <exception>
-// #include <nlohmann/json.hpp>
+#include <nlohmann/json.hpp>
 
 // 使用 nlohmann/json 库
 using json = nlohmann::json;
@@ -61,6 +61,14 @@ void printVector(const std::vector<std::string>& vec, const std::string& label) 
     std::cout << std::endl;
 }
 
+void setConsoleUtf8() {
+#ifdef _WIN32
+    SetConsoleOutputCP(CP_UTF8);
+#else
+    // Unix-like systems usually do not need to set console output encoding
+#endif
+}
+
 // struct CustomObject {
 //     py::array_t<double> array;
 //     std::vector<std::string> vec1;
@@ -98,12 +106,12 @@ void printVector(const std::vector<std::string>& vec, const std::string& label) 
 
 
 // Helper function to convert std::string to std::wstring
-std::wstring stringToWstring(const std::string& str) {
-    int size_needed = MultiByteToWideChar(CP_UTF8, 0, &str[0], (int)str.size(), NULL, 0);
-    std::wstring wstrTo(size_needed, 0);
-    MultiByteToWideChar(CP_UTF8, 0, &str[0], (int)str.size(), &wstrTo[0], size_needed);
-    return wstrTo;
-}
+// std::wstring stringToWstring(const std::string& str) {
+//     int size_needed = MultiByteToWideChar(CP_UTF8, 0, &str[0], (int)str.size(), NULL, 0);
+//     std::wstring wstrTo(size_needed, 0);
+//     MultiByteToWideChar(CP_UTF8, 0, &str[0], (int)str.size(), &wstrTo[0], size_needed);
+//     return wstrTo;
+// }
 
 // void runBacktrader(py::array_t<double> ohlc_data, 
 //                    const std::vector<std::string>& date_vector, 
