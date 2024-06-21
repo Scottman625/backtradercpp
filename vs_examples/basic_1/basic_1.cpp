@@ -235,26 +235,25 @@ void runAll(const std::vector<DataFrame>&  data_list) {
 
 
 
-void checkCoreUsage() {
-    DWORD_PTR processAffinityMask;
-    DWORD_PTR systemAffinityMask;
-
-    if (GetProcessAffinityMask(GetCurrentProcess(), &processAffinityMask, &systemAffinityMask)) {
-        std::cout << "Process affinity mask: " << processAffinityMask << std::endl;
-        std::cout << "System affinity mask: " << systemAffinityMask << std::endl;
-
-        // Count the number of cores being used
-        int coreCount = 0;
-        while (processAffinityMask) {
-            coreCount += processAffinityMask & 1;
-            processAffinityMask >>= 1;
-        }
-
-        std::cout << "Number of cores being used: " << coreCount << std::endl;
-    } else {
-        std::cerr << "Failed to get process affinity mask (" << GetLastError() << ").\n";
-    }
-}
+// void checkCoreUsage() {
+// #ifdef _WIN32
+//     DWORD_PTR processAffinityMask;
+//     DWORD_PTR systemAffinityMask;
+//     if (GetProcessAffinityMask(GetCurrentProcess(), &processAffinityMask, &systemAffinityMask)) {
+//         // Do something with the masks
+//     } else {
+//         std::cerr << "Failed to get process affinity mask (" << GetLastError() << ").\n";
+//     }
+// #else
+//     // Unix-like systems may use sysconf or other methods to get CPU info
+//     long nprocs = sysconf(_SC_NPROCESSORS_ONLN);
+//     if (nprocs == -1) {
+//         perror("sysconf");
+//     } else {
+//         std::cout << "Number of processors: " << nprocs << std::endl;
+//     }
+// #endif
+// }
 
 PYBIND11_MODULE(backtradercpp, m) {
 
@@ -266,5 +265,5 @@ PYBIND11_MODULE(backtradercpp, m) {
     m.def("runBacktrader", &runBacktrader, "Run the backtrader strategy",
           py::arg("data"), py::arg("columns"));
     m.def("runAll", &runAll, "Process a list of CustomObject");
-    m.def("checkCoreUsage", &checkCoreUsage, "Check the number of cores being used");
+    // m.def("checkCoreUsage", &checkCoreUsage, "Check the number of cores being used");
 }
