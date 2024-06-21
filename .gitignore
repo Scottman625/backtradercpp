@@ -29,3 +29,5 @@ out/
 
 .vscode/
 .vs/
+
+CMakeLists.txt
