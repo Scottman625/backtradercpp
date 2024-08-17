@@ -144,6 +144,9 @@ class BaseBrokerImpl {
 
 struct XRDSetting {
     double bonus, addition, dividen;
+
+    XRDSetting(double b, double a, double d)
+                : bonus(b), addition(a), dividen(d) {}
 };
 struct XRDTable {
     std::vector<date> record_date, execute_date;
