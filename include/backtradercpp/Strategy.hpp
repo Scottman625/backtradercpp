@@ -122,7 +122,9 @@ class GenericStrategy {
     int time_index() const { return time_index_; }
 
     const auto &datas() const { return price_feed_agg_->datas(); }
-    const auto &data(int broker) const { return datas()[broker]; }
+    const auto& stock_data(const std::string& broker) const { 
+        return datas().at(broker);  // 使用 std::string 來查找
+    }
     const auto &data(const std::string &broker_name) const {
         return datas()[broker_agg_->broker_id(broker_name)];
     }

@@ -74,13 +74,20 @@ class BaseBrokerImpl {
     void update_info();
     const analysis::TotalValueAnalyzer &analyzer() const { return analyzer_; }
 
-    int assets() const { return current_->volume.size(); }
+    int assets(int asset_id) const {
+        auto it = current_map_.find(std::to_string(asset_id));  // 查找對應的資產ID
+        if (it != current_map_.end() && it->second != nullptr) {
+            return it->second->volume.size();  // 確保找到對應的 PriceFeedData 並返回 volume 的大小
+        } else {
+            throw std::runtime_error("Asset ID not found or PriceFeedData is null.");
+        }
+    }
     auto cash() const { return portfolio_.cash; }
     auto total_value() const { return portfolio_.total_value; }
-    VecArrXi positions() const { return portfolio_.positions(assets()); }
-    VecArrXd values() const { return portfolio_.values(assets()); }
-    VecArrXd profits() const { return portfolio_.profits(assets()); }
-    VecArrXd adj_profits() const { return portfolio_.adj_profits(assets()); }
+    VecArrXi positions(int asset_id) const { return portfolio_.positions(assets(asset_id)); }
+    VecArrXd values(int asset_id) const { return portfolio_.values(assets(asset_id)); }
+    VecArrXd profits(int asset_id) const { return portfolio_.profits(assets(asset_id)); }
+    VecArrXd adj_profits(int asset_id) const { return portfolio_.adj_profits(assets(asset_id)); }
 
     void set_allow_short(bool flag) { allow_short_ = flag; }
     void set_commission_rate(double long_rate, double short_rate) {
@@ -94,7 +101,11 @@ class BaseBrokerImpl {
     void set_df_feed(feeds::BasePriceDataFeed data);
     auto feed() { return feed_; }
 
-    void set_data_ptr(PriceFeedData *data) { current_ = data; }
+    void set_data_ptr(int asset_id, PriceFeedData *data) {
+        std::string key = std::to_string(asset_id);  // 將 asset_id 轉換為 string 鍵
+        current_map_[key] = data;  // 直接通過鍵來更新或插入值
+    }
+
 
     void add_order(const Order &order);
 
@@ -123,7 +134,50 @@ class BaseBrokerImpl {
     feeds::BasePriceDataFeed df_feed_;
     std::shared_ptr<GenericCommission> commission_;
     std::shared_ptr<GenericTax> tax_;
-    PriceFeedData *current_;
+    // 使用 map 來儲存多檔股票的數據，key 是資產ID或股票代號
+    std::unordered_map<std::string, PriceFeedData*> current_map_;
+    std::unordered_map<int, double> positions_; // 記錄每個資產的持倉 (資產ID -> 持倉量)
+
+
+    // 方法：根據資產ID獲取對應的數據指針
+    PriceFeedData* get_price_feed_data(int asset) {
+        auto it = current_map_.find(std::to_string(asset));
+        if (it != current_map_.end()) {
+            return it->second;
+        }
+        return nullptr; // 找不到資產時返回 nullptr
+    }
+
+    // 更新資料的方法
+    void set_price_feed_data(int asset, PriceFeedData* data) {
+        current_map_[std::to_string(asset)] = data; // 將數據指針與資產ID對應
+    }
+
+    // 更新持倉的方法同樣適用於多檔股票，使用 asset 來選擇正確的數據
+    void update_portfolio(const Order &order, double closing_price) {
+        int asset = order.asset;
+
+        if (current_map_.find(std::to_string(asset)) != current_map_.end()) {
+            // 確保這個資產的數據存在
+            if (order.volume > 0) {
+                // 買入
+                positions_[asset] += order.volume; 
+                portfolio_.cash -= order.volume * order.price + order.fee;
+            } else {
+                // 賣出
+                positions_[asset] += order.volume; 
+                portfolio_.cash += -order.volume * order.price - order.fee;
+            }
+
+            double position_value = positions_[asset] * closing_price;
+            std::cout << "Updated position for asset: " << asset
+                      << ", New Position: " << positions_[asset]
+                      << ", Position Value: " << position_value << std::endl;
+        } else {
+            std::cerr << "No price feed data available for asset: " << asset << std::endl;
+        }
+    }
+
     // double cash_ = 10000;
     Portfolio portfolio_;
     // VecArrXi position_;
@@ -225,16 +279,16 @@ class BaseBroker {
     const analysis::TotalValueAnalyzer &analyzer() const { return sp->analyzer(); }
     void set_log_dir(const std::string &dir, int index);
 
-    const auto data_ptr() const { return sp->current_; }
+    const auto data_ptr() const { return sp->current_map_; }
 
-    int assets() const { return sp->assets(); }
+    int assets(int asset_id) const { return sp->assets(asset_id); }
     auto cash() const { return sp->cash(); }
     auto total_value() const { return sp->total_value(); }
 
-    VecArrXi positions() const { return sp->positions(); }
-    VecArrXd values() const { return sp->values(); }
-    VecArrXd profits() const { return sp->profits(); }
-    VecArrXd adj_profits() const { return sp->adj_profits(); };
+    VecArrXi positions(int asset_id) const { return sp->positions(asset_id); }
+    VecArrXd values(int asset_id) const { return sp->values(asset_id); }
+    VecArrXd profits(int asset_id) const { return sp->profits(asset_id); }
+    VecArrXd adj_profits(int asset_id) const { return sp->adj_profits(asset_id); };
 
     void resize(int n) { sp->resize(n); };
 
@@ -251,11 +305,20 @@ class BaseBroker {
     }
     auto feed() const { return sp->feed(); }
 
-    void set_data_ptr(PriceFeedData *data) { sp->set_data_ptr(data); }
-
+    void set_data_ptr(int asset_id, PriceFeedData* data) {
+        std::string key = std::to_string(asset_id);
+        sp->current_map_[key] = data;  // 將 PriceFeedData 指針與資產ID綁定
+    }
     void add_order(const Order &order) { sp->add_order(order); }
 
-    const ptime &time() const { return sp->current_->time; }
+    const ptime& time(int asset_id) const {
+        auto it = sp->current_map_.find(std::to_string(asset_id));  // 查找對應的資產ID
+        if (it != sp->current_map_.end()) {
+            return it->second->time;  // 返回該資產對應的時間
+        } else {
+            throw std::runtime_error("Asset ID not found in current_map_");
+        }
+    }
 
     const auto &name() const { return sp->name(); }
     const auto &name(int index) const { return sp->name(index); }
@@ -448,29 +511,36 @@ inline BaseBrokerImpl::BaseBrokerImpl(double cash, double long_commission_rate,
       tax_(std::make_shared<GenericTax>(long_tax_rate, long_commission_rate)) {}
 
 inline void BaseBrokerImpl::process(Order &order) {
+    int asset = order.asset;
     try {
-        // First check time
-        int asset = order.asset;
-        auto time = current_->time;
-        bool to_unprocessed = true;
+        // int asset = order.asset;  // 這裡的 asset 可以直接代表股票代號或資產ID
+        
+        // 從 current_map_ 中查找對應資產ID的數據
+        auto it = current_map_.find(asset);
+        if (it == current_map_.end()) {
+            throw std::runtime_error("Asset ID not found in current_map_");
+        }
+        PriceFeedData* current_data = it->second;  // 獲取對應的股票數據
 
-        // 检查订单的有效期
+        auto time = current_data->time;  // 使用當前資產的時間
+
+        // 這裡不需要 stock_code，直接使用 asset 作為唯一標識符
         if (time < order.valid_from) {
             order.state = OrderState::Waiting;
             return;
-        } else if ((time <= order.valid_until)) {
-            if (current_->valid.coeff(asset)) {
+        } else if (time <= order.valid_until) {
+            if (current_data->valid.coeff(asset)) {  
                 PriceEvaluatorInput info{
-                    current_->data.open.coeff(asset), current_->data.high.coeff(asset),
-                    current_->data.low.coeff(asset), current_->data.close.coeff(asset)
-                    };
-                    
-                // 计算价格
+                    current_data->data.open.coeff(asset), 
+                    current_data->data.high.coeff(asset),
+                    current_data->data.low.coeff(asset), 
+                    current_data->data.close.coeff(asset)
+                };
+
                 if (order.price_eval) {
                     order.price = order.price_eval->price(info);
                 }
 
-                // 检查订单价格是否在当天的高低价之间
                 if ((order.price >= info.low) && (order.price <= info.high)) {
                     order.value = order.volume * order.price;
                     double commission = commission_->cal_commission(order.price, order.volume);
@@ -479,52 +549,47 @@ inline void BaseBrokerImpl::process(Order &order) {
                     double total_v = order.value + order.fee;
                     bool order_valid = true;
 
-                    // 检查现金是否足够支付订单
                     if (portfolio_.cash < total_v) {
                         if (!allow_default_) {
                             order_valid = false;
-                            // fmt::print(fmt::fg(fmt::color::red), "Insufficient funds.\n");
-                        }
-                    }
-                    // 检查仓位是否允许
-                    if (portfolio_.position(asset) + order.volume < 0) {
-                        if (!allow_short_) {
-                            order_valid = false;
-                            fmt::print(fmt::fg(fmt::color::red), "Short not allowed.\n");
+                            std::cout << "Insufficient funds for asset: " << asset << std::endl;
                         }
                     }
 
-                    // 如果订单有效，则处理订单
+                    if (portfolio_.position(asset) + order.volume < 0) {
+                        if (!allow_short_) {
+                            order_valid = false;
+                            std::cout << "Short not allowed for asset: " << asset << std::endl;
+                        }
+                    }
+
                     if (order_valid) {
                         order.processed = true;
                         order.processed_at = time;
-                        double position_before = portfolio_.position(asset),
-                        
-                               cash_before = portfolio_.cash;
-                        portfolio_.update(order, current_->adj_data.close(asset));
-                        double position_after = portfolio_.position(asset),
-                               cash_after = portfolio_.cash;
+                        update_portfolio(order, current_data->adj_data.close(asset));  // 使用對應的股票數據
                         order.state = OrderState::Success;
-                                             order.state = OrderState::Success;
+                        std::cout << "Order processed successfully for asset: " << asset << std::endl;
                     } else {
-                        // fmt::print(fmt::fg(fmt::color::red), "Order is invalid.\n");
+                        std::cout << "Order invalid for asset: " << asset << std::endl;
                     }
                 } else {
-                    // fmt::print(fmt::fg(fmt::color::red), "Order price out of bounds.\n");
+                    std::cout << "Order price out of bounds for asset: " << asset << std::endl;
                 }
             } else {
-                // fmt::print(fmt::fg(fmt::color::red), "Asset not valid for current time.\n");
+                std::cout << "Asset not valid for current time: " << asset << std::endl;
             }
         } else {
             order.state = OrderState::Expired;
+            std::cout << "Order expired for asset: " << asset << std::endl;
         }
     } catch (const std::exception &e) {
-        // fmt::print(fmt::fg(fmt::color::red), "Error processing order: {}\n", e.what());
+        std::cerr << "Error processing order for asset: " << asset << ": " << e.what() << '\n';
     } catch (...) {
-        // fmt::print(fmt::fg(fmt::color::red), "Unknown error processing order.\n");
+        std::cerr << "Unknown error processing order for asset: " << asset << std::endl;
     }
-    // std::cout << "test number 3325" << std::endl;
 }
+
+
 
 inline void BaseBrokerImpl::process_old_orders() {
     // Remove expired
@@ -578,26 +643,43 @@ inline void BaseBrokerImpl::resize(int n) {}
 void BaseBrokerImpl::set_feed(feeds::BasePriceDataFeed data) {
     feed_ = data;
 
-    // 检查数据传递是否正确
-    // std::cout << "Data name: " << data.name() << std::endl;
-    // std::cout << "Data assets: " << data.assets() << std::endl;
-    // std::cout << "Data codes size: " << data.codes().size() << std::endl;
-
     analyzer_.set_name(data.name());
     resize(data.assets());
-    current_ = data.data_ptr();
     codes_ = data.codes();
 
+    // 嘗試將 sp 轉換為 PriceDataImpl
+    auto price_data_impl = std::dynamic_pointer_cast<feeds::PriceDataImpl>(data.sp);
+    if (!price_data_impl) {
+        throw std::runtime_error("Failed to cast BasePriceDataImpl to PriceDataImpl.");
+    }
+
+    // 將數據存入 current_map_
+    for (int i = 0; i < data.assets(); ++i) {
+        std::string code = data.codes()[i];  // 獲取每個資產的代碼（股票代號）
+        current_map_[code] = data.data_ptr(code);  // 使用股票代號作為鍵將 data_ptr 存入 current_map_ 中
+    }
+
+    // 確保數據正確被存入
     // std::cout << "CODES_SIZE: " << codes_.size() << std::endl;
 }
 
-void BaseBrokerImpl::set_df_feed(feeds::BasePriceDataFeed data) {
-    df_feed_ = data;
-    analyzer_.set_name(data.name());
-    resize(data.assets());
-    current_ = data.data_ptr();
-    codes_ = data.codes();
-}
+
+
+
+// void BaseBrokerImpl::set_df_feed(feeds::BasePriceDataFeed data) {
+//     df_feed_ = data;
+
+//     analyzer_.set_name(data.name());
+//     resize(data.assets());
+//     codes_ = data.codes();
+
+//     // 將數據存入 current_map_
+//     for (int i = 0; i < data.assets(); ++i) {
+//         std::string code = data.codes()[i];  // 獲取每個資產的代碼（股票代號）
+//         current_map_[i] = data.data_ptr(i);  // 將 data_ptr 存入 current_map_ 中
+//     }
+// }
+
 
 
 inline void BaseBrokerImpl::add_order(const Order &order) { unprocessed.emplace_back(order); }

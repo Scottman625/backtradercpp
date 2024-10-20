@@ -227,53 +227,48 @@ public:
 
     const std::vector<std::string>& codes() const override { return BasePriceDataImpl::codes(); }
 
-private:
-    void init() override;
+    // 在讀取每筆資料後，將其按照股票代號進行分類
+    void process_data(PriceFeedData& data) {
+        stock_data[data.ticker_].push_back(data);
+    }
 
     std::vector<std::vector<std::string>> data_;
     std::vector<std::string> columns_;
+    std::unordered_map<std::string, std::vector<PriceFeedData>> stock_data;
+
+private:
+    void init() override;
+
+    
     std::vector<std::vector<std::string>> combined_data_;
     std::vector<std::string> unique_dates_vector_;
+    
+
     int index;
     size_t assets_;
     TimeStrConv::func_type time_converter_;
 };
 
+// 將資料按股票代號分類處理
 inline bool PriceDataImpl::read() {
-    // 假设在读取数据后需要一些额外处理或验证
-    // std::cout << "Reading PriceDataImpl" << std::endl;
-    // std::cout << "combined_data_.size: " << combined_data_.size() << std::endl;
-    // std::cout << "combined_data_[0].size: " << combined_data_[0].size() << std::endl;
-
-    try
-    {
-    if (index >= data_.size()) {
+    try {
+        if (index >= data_.size()) {
             finished_ = true;
             return false;
         }
 
-    // std::cout << "test a" << std::endl;
-    // std::cout << " index : " << index << std::endl;
-    auto row_string = data_[index];
-    // std::cout << "row_string[2] : " << row_string[2] << std::endl;
-    next_.time = boost::posix_time::time_from_string(time_converter_(row_string[2]));
-    // std::cout << "test c" << std::endl;
-    cast_ohlc_data_(row_string, next_.data);
-    // std::cout << "test d" << std::endl;
+        auto row_string = data_[index];
+        next_.ticker_ = row_string[0];
+        next_.time = boost::posix_time::time_from_string(row_string[2]);
+        cast_ohlc_data_(row_string, next_.data);
+        next_.volume.setConstant(1e12);
+        next_.validate_assets();
 
-    // Set volume to very large.
-    // std::cout << "test e" << std::endl;
-    next_.volume.setConstant(1e12);
-    // std::cout << "test f" << std::endl;
-    next_.validate_assets();
-    // std::cout << "test g" << std::endl;
+        process_data(next_);  // 根據股票代號分別儲存處理
 
-    ++index;
-
-    return true;    
-    }
-    catch(const std::exception& e)
-    {
+        ++index;
+        return true;
+    } catch (const std::exception &e) {
         std::cerr << e.what() << '\n';
     }
 }
@@ -450,7 +445,24 @@ struct BasePriceDataFeed {
 
     virtual void reset() { sp->reset(); }
 
-    PriceFeedData* data_ptr() { return sp->data_ptr(); }
+    PriceFeedData* data_ptr(const std::string& stock_code) {
+        // 假設 sp 是指向 PriceDataImpl 的指針，我們可以動態轉換
+        auto price_data_impl = std::dynamic_pointer_cast<PriceDataImpl>(sp);
+        if (price_data_impl) {
+            // 使用 find() 查找對應的股票代號
+            auto it = price_data_impl->stock_data.find(stock_code);
+            if (it != price_data_impl->stock_data.end()) {
+                // 返回該股票代號對應的數據指針
+                return &it->second[0];  // 假設每個股票代號只有一個數據
+            } else {
+                throw std::invalid_argument("Stock code not found.");
+            }
+        }
+        throw std::runtime_error("Invalid data structure.");
+    }
+
+
+
 
     int assets() const { return sp->assets(); }
 
@@ -545,7 +557,7 @@ template <typename DataT, typename FeedT, typename BufferT> class GenericFeedsAg
   public:
     // GenericFeedsAggragator() = default;
 
-    const auto &datas() const { return data_; }
+    const auto &datas() const { return stock_data; }
     const auto &datas_valid() const { return datas_valid_; }
     bool data_valid(int feed) const { return datas_valid_.coeff(feed); }
 
@@ -577,6 +589,7 @@ template <typename DataT, typename FeedT, typename BufferT> class GenericFeedsAg
     std::vector<const DataT *> next_;
     std::vector<FeedT> feeds_;
     std::vector<BufferT> data_;
+    std::unordered_map<std::string, std::vector<DataT>> stock_data;
 
     VecArrXb datas_valid_;
 

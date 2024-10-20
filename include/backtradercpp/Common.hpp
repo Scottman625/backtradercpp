@@ -53,6 +53,8 @@ struct PriceFeedData {
     std::unordered_map<std::string, VecArrXd> num_data_;
     std::unordered_map<std::string, std::vector<std::string>> str_data_;
 
+    std::string ticker_;  // 股票代號
+
     void validate_assets();
     void resize(int assets);
 
@@ -263,6 +265,7 @@ struct Portfolio {
     void transfer_cash(int cash);
 
     void reset() { *this = Portfolio(); }
+    
 };
 #define BK_DEFINE_PORTFOLIO_MEMBER_ACCESSOR(var, type, default_val)                                \
     inline type Portfolio::var(int asset) const {                                                  \

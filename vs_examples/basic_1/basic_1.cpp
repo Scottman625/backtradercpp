@@ -6,8 +6,8 @@
 #include <iostream>
 #include <fmt/core.h>
 #include <fmt/format.h>
-// #include <windows.h>
-// #include <thread>
+#include <windows.h>
+#include <thread>
 #include <chrono>
 #include <memory>
 #include <exception>
@@ -22,31 +22,42 @@ using namespace backtradercpp;
 
 struct SimpleStrategy : strategy::GenericStrategy {
     void run() override {
-        // std::cout << "Running SimpleStrategy" << std::endl;
-
-        // 每 20 个时间步长执行一次买入操作
+        // 每 50 個時間步長執行一次買入操作
         if (time_index() % 50 == 0) {
-            // std::cout << "assets in buy method: " << data(0).assets() << std::endl;
-            for (int j = 0; j < data(0).assets(); ++j) {
-                if (data(0).valid(-1, j)) {
-                    // std::cout << "Buying asset " << j << std::endl;
-                    buy(0, j, data(0).open(-1, j), 100);
+            // 遍歷所有股票數據
+            for (const auto& stock : stock_data) {
+                const std::string& ticker = stock.first;  // 股票代號
+                const std::vector<PriceFeedData>& data_vector = stock.second;
+
+                // 確保有數據並操作資產
+                for (int j = 0; j < data_vector.size(); ++j) {
+                    const PriceFeedData& data = data_vector[j];  // 每個時間步的數據
+                    if (data.valid.coeff(j)) {
+                        // 執行買入操作
+                        buy(ticker, j, data.open.coeff(j), 100);
+                    }
                 }
             }
         }
 
-        // 每 20 个时间步长的第 19 个时间步长执行一次卖出操作
+        // 每 100 個時間步長的第 19 個時間步執行一次賣出操作
         if (time_index() % 100 == 19) {
-            // std::cout << "assets in sell method: " << data(0).assets() << std::endl;
-            for (int j = 0; j < data(0).assets(); ++j) {
-                if (data(0).valid(-1, j)) {
-                    // std::cout << "Selling asset " << j << std::endl;
-                    close(0, j, data(0).open(-1, j));
+            for (const auto& stock : stock_data) {
+                const std::string& ticker = stock.first;
+                const std::vector<PriceFeedData>& data_vector = stock.second;
+
+                for (int j = 0; j < data_vector.size(); ++j) {
+                    const PriceFeedData& data = data_vector[j];
+                    if (data.valid.coeff(j)) {
+                        // 執行賣出操作
+                        close(ticker, j, data.open.coeff(j));
+                    }
                 }
             }
         }
     }
 };
+
 
 struct DataFrame {
     std::vector<std::vector<std::string>> data;
@@ -147,7 +158,13 @@ void runBacktrader(const std::vector<std::vector<std::string>>& data,
     try {
         // Initialize PriceData
         std::shared_ptr<feeds::PriceData> priceData = std::make_shared<feeds::PriceData>(data, columns, feeds::TimeStrConv::delimited_date);
-
+        // for(int i = 0; i < data.size(); i++){
+        //     if (i <=10){for(int j = 0; j < data[i].size(); j++){
+        //         std::cout << data[i][j] << " ";
+        //     }
+        //     std::cout <<"==================================="<< std::endl;
+        //     }
+        // }
         // Create and configure Cerebro
         Cerebro cerebro;
         // std::cout << "Adding broker..." << std::endl;
