@@ -118,22 +118,69 @@ class GenericStrategy {
     friend class Cerebro;
 
   public:
+    int time_index_ = -1, id_ = 0; // id_ is used for multiple strategies support
     const auto &time() const { return price_feed_agg_->time(); }
     int time_index() const { return time_index_; }
 
-    const auto &datas() const { return price_feed_agg_->datas(); }
+    auto &datas() const { return price_feed_agg_->datas(); }
     const auto& stock_data(const std::string& broker) const { 
         return datas().at(broker);  // 使用 std::string 來查找
     }
     const auto &data(const std::string &broker_name) const {
-        return datas()[broker_agg_->broker_id(broker_name)];
+        std::string broker_id = std::to_string(broker_agg_->broker_id(broker_name));  // 假設 broker_id 是 string
+        return datas().at(broker_id);  // 使用 at() 來查找鍵
     }
 
+
     const auto &common_datas() const { return common_feed_agg_->datas(); }
-    const auto &common_data(int i) const { return common_datas()[i]; }
-    const auto &common_data(const std::string &name) const {
-        return common_datas()[broker_agg_->broker_id(name)];
+    const auto &common_data(int i) const {
+        const auto& map = common_datas();  // 獲取 unordered_map
+        const auto& keys = get_keys();     // 假設這是一個存有鍵的向量
+        
+        if (i < 0 || i >= keys.size()) {
+            throw std::out_of_range("Index out of range");
+        }
+        
+        const auto& key = keys[i];         // 根據 i 獲取對應的鍵
+        auto it = map.find(key);           // 在 unordered_map 中查找對應的鍵
+        
+        if (it == map.end()) {
+            throw std::runtime_error("Key not found in common_datas()");
+        }
+        
+        return it->second;  // 返回對應鍵的 vector<CommonFeedData>
     }
+    std::vector<std::string> get_keys() const {
+        const auto& map = common_datas();  // 假設 common_datas() 返回 unordered_map
+        std::vector<std::string> keys;
+        keys.reserve(map.size());  // 儲存所有鍵的空間
+
+        // 遍歷 unordered_map，提取所有的鍵
+        for (const auto& pair : map) {
+            keys.push_back(pair.first);  // 將每個鍵存入 keys 向量
+        }
+
+        return keys;  // 返回鍵的向量
+    }
+    // const auto &common_data(int broker_id) const {
+    //     const auto& map = common_datas();  // 獲取 unordered_map
+    //     const auto& keys = get_keys();     // 假設這是一個存有鍵的向量
+
+    //     if (broker_id < 0 || broker_id >= keys.size()) {
+    //         throw std::out_of_range("Broker ID out of range");
+    //     }
+
+    //     std::string key = keys[broker_id];  // 根據 broker_id 獲取對應的字符串鍵
+    //     auto it = map.find(key);            // 查找對應的鍵
+
+    //     if (it == map.end()) {
+    //         throw std::runtime_error("Key not found in common_datas()");
+    //     }
+
+    //     return it->second;  // 返回對應的 vector<CommonFeedData>
+    // }
+
+
 
     bool data_valid(int feed) const { return price_feed_agg_->data_valid(feed); }
 
@@ -150,7 +197,7 @@ class GenericStrategy {
                      date_duration til_start_d = days(0), time_duration til_start_t = hours(0),
                      date_duration start_to_end_d = days(0),
                      time_duration start_to_end_t = hours(23)) {
-        buy(broker_id(broker_name), asset, price, volume, til_start_d, til_start_t, start_to_end_d,
+        return buy(broker_id(broker_name), asset, price, volume, til_start_d, til_start_t, start_to_end_d,
             start_to_end_t);
     }
     const Order &buy(int broker_id, int asset, std::shared_ptr<GenericPriceEvaluator> price_eval,
@@ -197,7 +244,7 @@ class GenericStrategy {
 
     const Order &close(int broker_id, int asset, double price);
     const Order &close(const std::string &broker_name, int asset, double price) {
-        close(broker_id(broker_name), asset, price);
+        return close(broker_id(broker_name), asset, price);
     }
     const Order &close(int broker_id, int asset, std::shared_ptr<GenericPriceEvaluator> price_eval);
     const Order &close(const std::string &broker_name, int asset,
@@ -224,7 +271,7 @@ class GenericStrategy {
 
     void pre_execute() {
         order_pool_.orders.clear();
-        ++time_index_;
+        // ++time_index_;
     }
 
     const auto &execute() {
@@ -257,8 +304,10 @@ class GenericStrategy {
     const auto &portfolio_items(int broker) const;
 
     const std::vector<std::string> &codes(int broker) const {
-        return price_feed_agg_->feed(broker).codes();
+        auto feed = price_feed_agg_->feed(broker);  // 确保 feed 返回正确的对象
+        return feed.codes();  // 调用 .codes() 方法
     }
+
 
     int broker_id(const std::string &name) const { return broker_agg_->broker_id(name); }
 
@@ -315,7 +364,7 @@ class GenericStrategy {
     virtual ~GenericStrategy() = default;
 
   private:
-    int time_index_ = -1, id_ = 0; // id_ is used for multiple strategies support
+    
 
     Cerebro *cerebro_;
     feeds::PriceFeedAggragator *price_feed_agg_;
@@ -422,34 +471,62 @@ backtradercpp::strategy::GenericStrategy::close(int broker_id, int asset,
 }
 
 template <int UNIT>
-void GenericStrategy::adjust_to_weight_target(int broker_id, const VecArrXd &w, const VecArrXd &p,
+void GenericStrategy::adjust_to_weight_target(int broker_id, const VecArrXd &w, const VecArrXd &p, 
                                               double TOTAL_FRACTION) {
-    VecArrXd target_prices = data(broker_id).open();
-    if (p.size() != 0) {
-        target_prices = p;
-    }
-    VecArrXd target_value = wealth(broker_id) * TOTAL_FRACTION * w;
-    VecArrXi target_volume = (target_value / (target_prices * UNIT)).cast<int>();
-    VecArrXi volume_diff = target_volume - positions(broker_id);
-    for (int i = 0; i < volume_diff.size(); ++i) {
-        if (data(broker_id).valid().coeff(i) && (volume_diff.coeff(i) != 0)) {
-            buy(broker_id, i, target_prices.coeff(i), volume_diff.coeff(i));
+    // 假設我們需要處理多檔股票，遍歷所有的資產（股票代號）
+    for (const auto& price_feed_data : data(std::to_string(broker_id))) {
+        // 獲取每檔股票的開盤價
+        VecArrXd target_prices = price_feed_data.data.open;
+
+        // 如果 p 有指定價格，使用 p 替代
+        if (p.size() != 0) {
+            target_prices = p;
+        }
+
+        // 計算每檔股票的目標價值
+        VecArrXd target_value = wealth(broker_id) * TOTAL_FRACTION * w;
+        
+        // 計算每檔股票的目標持倉
+        VecArrXi target_volume = (target_value / (target_prices * UNIT)).cast<int>();
+        
+        // 計算目標持倉與當前持倉的差異
+        VecArrXi volume_diff = target_volume - positions(broker_id);
+
+        for (int i = 0; i < volume_diff.size(); ++i) {
+            // 確認當前資產有效且存在需要交易的數量
+            if (price_feed_data.valid.coeff(i) && (volume_diff.coeff(i) != 0)) {
+                // 執行交易，根據差異進行買入或賣出
+                buy(broker_id, i, target_prices.coeff(i), volume_diff.coeff(i));
+            }
         }
     }
 }
 
+
 void GenericStrategy::adjust_to_volume_target(int broker_id, const VecArrXi &target_volume,
                                               const VecArrXd &p, double TOTAL_FRACTION) {
-    VecArrXd target_prices = data(broker_id).open();
-    if (p.size() != 0) {
-        target_prices = p;
-    }
-    VecArrXi volume_diff = target_volume - positions(broker_id);
-    for (int i = 0; i < volume_diff.size(); ++i) {
-        if (data(broker_id).valid().coeff(i) && (volume_diff.coeff(i) != 0)) {
-            buy(broker_id, i, target_prices.coeff(i), volume_diff.coeff(i));
+    // 假設我們需要處理多檔股票，遍歷所有的資產（股票代號）
+    for (const auto& price_feed_data : data(std::to_string(broker_id))) {
+        // 獲取每檔股票的開盤價
+        VecArrXd target_prices = price_feed_data.data.open;
+        
+        // 如果 p 有指定價格，使用 p 替代
+        if (p.size() != 0) {
+            target_prices = p;
+        }
+
+        // 計算目標持倉與當前持倉的差異
+        VecArrXi volume_diff = target_volume - positions(broker_id);
+        
+        for (int i = 0; i < volume_diff.size(); ++i) {
+            // 確認當前資產有效且存在需要交易的數量
+            if (price_feed_data.valid.coeff(i) && (volume_diff.coeff(i) != 0)) {  
+                // 執行交易，根據差異進行買入或賣出
+                buy(broker_id, i, target_prices.coeff(i), volume_diff.coeff(i));
+            }
         }
     }
 }
+
 } // namespace strategy
 } // namespace backtradercpp

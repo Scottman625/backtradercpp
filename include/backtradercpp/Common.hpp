@@ -16,6 +16,7 @@
 #include <unordered_map>
 #include <fort.hpp>
 
+
 #include "util.hpp"
 
 namespace backtradercpp {
@@ -64,11 +65,16 @@ struct CommonFeedData {
     boost::posix_time::ptime time;
     std::unordered_map<std::string, double> num_data_;
     std::unordered_map<std::string, std::string> str_data_;
+
 };
 template <typename T> class FeedDataBuffer {
   public:
     FeedDataBuffer() = default;
     FeedDataBuffer(int window) : window_(window) { set_window(window_); }
+    FeedDataBuffer(const PriceFeedData& data) {
+        data_.push_back(data.data);
+        window_ = 1;
+    }
 
     const T &data(int time = -1) const { return data_[time]; }
     const auto &datas() const { return data_; }
@@ -157,6 +163,20 @@ class PriceFeedDataBuffer : public FeedDataBuffer<PriceFeedData> {
     // const auto &num(const std::string &name) const;
     // const auto &str(int k, const std::string &name) const;
     // const auto &str(const std::string &name) const;
+
+        // 假設有一個方法可以將數據載入
+void load_from_price_feed_data(const PriceFeedData& price_feed_data) {
+    // time = price_feed_data.time;
+
+    // 複製開盤價
+    this->open(-1) = price_feed_data.data.open;  // 假設 open_data 是一個資料成員
+    this->high(-1) = price_feed_data.data.high;
+    this->low(-1) = price_feed_data.data.low;
+    this->close(-1) = price_feed_data.data.close;
+    this->adj_close(-1) = price_feed_data.adj_data.close;
+
+    this->volume(-1) = price_feed_data.volume.sum();  // 假設是累加成交量
+}
 
   private:
     int assets_ = 0;
@@ -289,6 +309,16 @@ BK_DEFINE_PORTFOLIO_MEMBER_ACCESSOR(profit, double, 0);
         }                                                                                          \
         return res;                                                                                \
     }
+
+// #define BK_DEFINE_PORTFOLIO_MEMBER_VEC_ACCESSOR(name, type, default_val) \
+//     inline type Portfolio::name##s(int total_assets) const { \
+//         type res(total_assets); \
+//         res.fill(default_val);  /* 使用 fill 而不是 setConstant 來處理 Eigen 類型 */ \
+//         for (const auto &[k, v] : portfolio_items) { \
+//             res.coeffRef(k) = v.name; \
+//         } \
+//         return res; \
+//     }
 
 BK_DEFINE_PORTFOLIO_MEMBER_VEC_ACCESSOR(position, VecArrXi, 0)
 BK_DEFINE_PORTFOLIO_MEMBER_VEC_ACCESSOR(value, VecArrXd, 0)

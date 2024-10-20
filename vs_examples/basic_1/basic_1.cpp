@@ -23,9 +23,10 @@ using namespace backtradercpp;
 struct SimpleStrategy : strategy::GenericStrategy {
     void run() override {
         // 每 50 個時間步長執行一次買入操作
-        if (time_index() % 50 == 0) {
+        std::cout << "time_index(): " << time_index() << std::endl;
+        if (time_index() % 2 == 0) {
             // 遍歷所有股票數據
-            for (const auto& stock : stock_data) {
+            for (const auto& stock : datas()) {
                 const std::string& ticker = stock.first;  // 股票代號
                 const std::vector<PriceFeedData>& data_vector = stock.second;
 
@@ -34,15 +35,15 @@ struct SimpleStrategy : strategy::GenericStrategy {
                     const PriceFeedData& data = data_vector[j];  // 每個時間步的數據
                     if (data.valid.coeff(j)) {
                         // 執行買入操作
-                        buy(ticker, j, data.open.coeff(j), 100);
+                        buy(ticker, j, data.data.open.coeff(j), 100);
                     }
                 }
             }
         }
 
         // 每 100 個時間步長的第 19 個時間步執行一次賣出操作
-        if (time_index() % 100 == 19) {
-            for (const auto& stock : stock_data) {
+        if (time_index() % 2 == 1) {
+            for (const auto& stock : datas()) {
                 const std::string& ticker = stock.first;
                 const std::vector<PriceFeedData>& data_vector = stock.second;
 
@@ -50,7 +51,7 @@ struct SimpleStrategy : strategy::GenericStrategy {
                     const PriceFeedData& data = data_vector[j];
                     if (data.valid.coeff(j)) {
                         // 執行賣出操作
-                        close(ticker, j, data.open.coeff(j));
+                        close(ticker, j, data.data.open.coeff(j));
                     }
                 }
             }
@@ -167,39 +168,57 @@ void runBacktrader(const std::vector<std::vector<std::string>>& data,
         // }
         // Create and configure Cerebro
         Cerebro cerebro;
-        // std::cout << "Adding broker..." << std::endl;
+        std::cout << "Adding broker..." << std::endl;
         cerebro.add_broker(
             broker::BaseBroker(5000000, 0.0005, 0.001)
                 .set_feed(*priceData)
         );
+        std::cout << "Adding strategy..." << std::endl;
         cerebro.add_strategy(std::make_shared<SimpleStrategy>());
+        std::cout << "Running strategy..." << std::endl;
         cerebro.run();
     } catch (const std::exception &e) {
         std::cerr << "Error: " << e.what() << std::endl;
     }
 }
 
-void runAll(const std::vector<DataFrame>&  data_list) {
+void runAll(const std::vector<DataFrame>& data_list) {
     auto start = std::chrono::high_resolution_clock::now();
     std::cout << "Running runAll" << std::endl;
 
     // Ensure GIL is acquired in this thread to convert Python objects to C++ objects
     py::gil_scoped_acquire acquire;
 
+    // 合并所有传递过来的数据
+    std::vector<std::vector<std::string>> merged_data;
+    std::vector<std::string> merged_columns;
+
     for (const auto& data : data_list) {
         try {
+            // 将每个 data 的内容合并到 merged_data 中
+            merged_data.insert(merged_data.end(), data.data.begin(), data.data.end());
 
-            // Run backtrader with C++ objects
-            runBacktrader(data.data, data.columns);
+            // 确保列名只有一次（假设列名相同）
+            if (merged_columns.empty()) {
+                merged_columns = data.columns;
+            }
         } catch (const std::exception &e) {
-            std::cerr << "Error in converting data: " << e.what() << std::endl;
+            std::cerr << "Error in merging data: " << e.what() << std::endl;
         }
+    }
+
+    try {
+        // 运行 backtrader，只执行一次
+        runBacktrader(merged_data, merged_columns);
+    } catch (const std::exception &e) {
+        std::cerr << "Error in running backtrader: " << e.what() << std::endl;
     }
 
     auto end = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> elapsed = end - start;
     std::cout << "C++ code elapsed time : " << elapsed.count() << " seconds.\n";
 }
+
 
 
 
