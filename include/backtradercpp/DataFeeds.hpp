@@ -261,10 +261,7 @@ inline bool PriceDataImpl::read() {
         
         // fmt::print("Reading data...2\n");
         auto row_string = data_[index];
-        for(auto &data : row_string) {
-            fmt::print("{} ", data);
-            
-        }
+
         // fmt::print("Reading data...3\n");
         next_.ticker_ = row_string[0];
         std::string raw_time_str = row_string[2];  // 例如 "2024-05-24"

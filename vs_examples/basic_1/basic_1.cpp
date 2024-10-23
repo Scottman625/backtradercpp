@@ -23,41 +23,40 @@ using namespace backtradercpp;
 struct SimpleStrategy : strategy::GenericStrategy {
     void run() override {
         // 每 50 個時間步長執行一次買入操作
-        std::cout << "time_index(): " << time_index() << std::endl;
-        if (time_index() % 2 == 0) {
+        if (time_index() % 50 == 0) {
             // 遍歷所有股票數據
             for (const auto& stock : datas()) {
                 const std::string& ticker = stock.first;  // 股票代號
                 const std::vector<PriceFeedData>& data_vector = stock.second;
-
-                // 確保有數據並操作資產
-                for (int j = 0; j < data_vector.size(); ++j) {
-                    const PriceFeedData& data = data_vector[j];  // 每個時間步的數據
-                    if (data.valid.coeff(j)) {
-                        // 執行買入操作
-                        buy(ticker, j, data.data.open.coeff(j), 100);
-                    }
+                
+                // 確保有最新數據並操作資產
+                if (!data_vector.empty()) {
+                    const PriceFeedData& latest_data = data_vector.back();  // 取最後一個元素，即最新的數據
+                    // for (int j = 0; j < latest_data.data.open.size(); ++j) {
+                    std::cout << "ticker: " << ticker << "open price: "<< latest_data.data.open.coeff(0) << std::endl;
+                    buy(0, stoi(ticker), latest_data.data.open.coeff(0), 100);
+  
                 }
             }
         }
 
-        // 每 100 個時間步長的第 19 個時間步執行一次賣出操作
-        if (time_index() % 2 == 1) {
+        // 每 100 個時間步長的第 40 個時間步執行一次賣出操作
+        if (time_index() % 50 == 40) {
             for (const auto& stock : datas()) {
                 const std::string& ticker = stock.first;
                 const std::vector<PriceFeedData>& data_vector = stock.second;
 
-                for (int j = 0; j < data_vector.size(); ++j) {
-                    const PriceFeedData& data = data_vector[j];
-                    if (data.valid.coeff(j)) {
-                        // 執行賣出操作
-                        close(ticker, j, data.data.open.coeff(j));
-                    }
+                if (!data_vector.empty()) {
+                    const PriceFeedData& latest_data = data_vector.back();  // 取最後一個元素，即最新的數據
+
+                    close(0, stoi(ticker), latest_data.data.close.coeff(0));
                 }
+
             }
         }
     }
 };
+
 
 
 struct DataFrame {

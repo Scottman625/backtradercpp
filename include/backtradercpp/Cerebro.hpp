@@ -180,14 +180,7 @@ void Cerebro::run() {
 
         // 获取当前时间
         ptime current_time = price_feeds_agg_.time(); 
-        fmt::print("times_[i]: {}\n", boost::posix_time::to_simple_string(current_time)); 
-
-        // 判断当前时间是否有效
-        if (current_time.is_not_a_date_time()) {
-            fmt::print("Error: current_time is not a valid date-time\n");
-        } else {
-            fmt::print("current_time: {}\n", boost::posix_time::to_simple_string(current_time));
-        }
+        // fmt::print("times_[i]: {}\n", boost::posix_time::to_simple_string(current_time)); 
 
         common_feeds_agg_.read();
 

@@ -197,7 +197,8 @@ class GenericStrategy {
                      date_duration til_start_d = days(0), time_duration til_start_t = hours(0),
                      date_duration start_to_end_d = days(0),
                      time_duration start_to_end_t = hours(23)) {
-        return buy(broker_id(broker_name), asset, price, volume, til_start_d, til_start_t, start_to_end_d,
+                        std::cout << "buy stock" << asset << " with price " << price  << std::endl;
+            return buy(broker_id(broker_name), asset, price, volume, til_start_d, til_start_t, start_to_end_d,
             start_to_end_t);
     }
     const Order &buy(int broker_id, int asset, std::shared_ptr<GenericPriceEvaluator> price_eval,
@@ -244,6 +245,7 @@ class GenericStrategy {
 
     const Order &close(int broker_id, int asset, double price);
     const Order &close(const std::string &broker_name, int asset, double price) {
+        std::cout << "close stock" << asset << " with price " << price  << std::endl;
         return close(broker_id(broker_name), asset, price);
     }
     const Order &close(int broker_id, int asset, std::shared_ptr<GenericPriceEvaluator> price_eval);
@@ -423,6 +425,8 @@ const Order &GenericStrategy::buy(int broker_id, int asset, double price, int vo
                 .valid_from = time() + til_start_d + til_start_t,
                 .valid_until =
                     time() + til_start_d + til_start_t + start_to_end_d + start_to_end_t};
+
+    std::cout << "buy stock" << asset << " with price " << price  << std::endl;
     order_pool_.orders.emplace_back(std::move(order));
     return order_pool_.orders.back();
 }
