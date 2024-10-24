@@ -47,7 +47,8 @@ struct TimeStrConv {
 };
 
 // 這是一個前向聲明，表示存在一個模板類別GenericFeedsAggragator，它接受三個模板參數。該類別的定義並未在這段程式碼中給出。
-template <typename DataT, typename FeedT, typename BufferT> class GenericFeedsAggragator;
+template <typename PriceFeedData, typename PriceData, typename BufferT>
+class GenericFeedsAggragator;
 
 // 這是一個枚舉類型，用於表示某種狀態，可能的值為Valid、Invalid和Finished。
 enum State { Valid, Invalid, Finished };
@@ -204,13 +205,13 @@ class CSVDirDataImpl : public BasePriceDataImpl {
 
 class PriceDataImpl : public BasePriceDataImpl {
   public:
+    PriceDataImpl() { std::cout << "PriceDataImpl constructed" << std::endl; };
     PriceDataImpl(const std::vector<std::vector<std::string>> &data,
                   const std::vector<std::string> &columns,
-                  std::shared_ptr<std::unordered_map<std::string, std::vector<PriceFeedData>>>
-                      shared_stock_data,
                   TimeStrConv::func_type time_converter = nullptr)
-        : data_(data), columns_(columns), stock_data(shared_stock_data),
-          BasePriceDataImpl(time_converter) {
+        : data_(data), columns_(columns), BasePriceDataImpl(time_converter),
+          stock_data(
+              std::make_shared<std::unordered_map<std::string, std::vector<PriceFeedData>>>()) {
         if (time_converter) {
             time_converter_ = time_converter;
         } else {
@@ -218,6 +219,7 @@ class PriceDataImpl : public BasePriceDataImpl {
         }
         init();
         index = 0;
+        std::cout << "PriceDataImpl constructed with args" << std::endl;
     }
 
     bool read() override;
@@ -232,9 +234,28 @@ class PriceDataImpl : public BasePriceDataImpl {
     const std::vector<std::string> &codes() const override { return BasePriceDataImpl::codes(); }
 
     // 在讀取每筆資料後，將其按照股票代號進行分類
+
     void process_data(PriceFeedData &data) {
-        (*stock_data)[data.ticker_].push_back(data); // 先解引用 shared_ptr 再使用 []
-        std::cout << "stock_data size after process data: " << stock_data->size() << std::endl;
+        (*stock_data)[data.ticker_].push_back(data);
+        // std::cout << "Processed stock data for ticker: " << data.ticker_
+        //           << " current size: " << (*stock_data)[data.ticker_].size() << std::endl;
+
+        // std::cout << "Printing stock_data contents:" << std::endl;
+        // for (const auto &pair : *stock_data) {
+        //     const std::string &ticker = pair.first;
+        //     const std::vector<PriceFeedData> &data_vector = pair.second;
+
+        //     std::cout << "Ticker: " << ticker << " | Number of entries: " << data_vector.size()
+        //               << std::endl;
+
+        //     // 打印每条数据的详细信息（如时间、开盘价、收盘价等）
+        //     for (const auto &price_data : data_vector) {
+        //         std::cout << "  Time: " << boost::posix_time::to_simple_string(price_data.time)
+        //                   << " | Open: " << price_data.data.open.coeff(0)
+        //                   << " | Close: " << price_data.data.close.coeff(0)
+        //                   << " | Volume: " << price_data.volume.coeff(0) << std::endl;
+        //     }
+        // }
     }
 
     std::vector<std::vector<std::string>> data_;
@@ -245,10 +266,14 @@ class PriceDataImpl : public BasePriceDataImpl {
         return stock_data;
     }
 
+    ~PriceDataImpl() { std::cout << "PriceDataImpl destructed" << std::endl; }
+
   private:
     void init() override;
-    std::shared_ptr<std::unordered_map<std::string, std::vector<PriceFeedData>>>
-        stock_data = nullptr; // 使用 shared_ptr 共享
+
+    // Initialize stock_data to point to an empty unordered_map
+    std::shared_ptr<std::unordered_map<std::string, std::vector<PriceFeedData>>> stock_data =
+        std::shared_ptr<std::unordered_map<std::string, std::vector<PriceFeedData>>>();
 
     std::vector<std::vector<std::string>> combined_data_;
     std::vector<std::string> unique_dates_vector_;
@@ -604,6 +629,7 @@ class BasePriceDataFeed {
 
 class PriceData : public BasePriceDataFeed {
   public:
+    PriceData() : BasePriceDataFeed(std::make_shared<PriceDataImpl>()) {}
     PriceData(const std::vector<std::vector<std::string>> &data,
               const std::vector<std::string> &columns,
               TimeStrConv::func_type time_converter = nullptr)
@@ -627,14 +653,24 @@ class PriceData : public BasePriceDataFeed {
 };
 
 //-------------------------------------------------------------------
-template <typename DataT, typename FeedT, typename BufferT> class GenericFeedsAggragator {
+template <typename PriceFeedData, typename PriceData, typename BufferT>
+class GenericFeedsAggragator {
   public:
-    // GenericFeedsAggragator() = default;
-    GenericFeedsAggragator(
-        std::shared_ptr<std::unordered_map<std::string, std::vector<DataT>>> shared_stock_data)
-        : stock_data(shared_stock_data) {}
+    // Default constructor (automatically initializes an empty shared_ptr)
+    GenericFeedsAggragator()
+        : stock_data(
+              std::make_shared<std::unordered_map<std::string, std::vector<PriceFeedData>>>()) {
+        std::cout << "Default constructor called with empty stock_data" << std::endl;
+    }
 
-    const auto &datas() const { return stock_data; }
+    // Constructor accepting shared stock_data from PriceDataImpl
+    GenericFeedsAggragator(
+        std::shared_ptr<std::unordered_map<std::string, std::vector<PriceFeedData>>> stock_data)
+        : stock_data(stock_data) {
+        std::cout << "Constructor with shared stock_data called" << std::endl;
+    }
+
+    const auto &datas() const { return *stock_data; }
     const auto &datas_valid() const { return datas_valid_; }
     bool data_valid(int feed) const { return datas_valid_.coeff(feed); }
 
@@ -643,7 +679,7 @@ template <typename DataT, typename FeedT, typename BufferT> class GenericFeedsAg
 
     const auto feed(int i) const { return feeds_[i]; }
 
-    void add_feed(const FeedT &feed);
+    void add_feed(const PriceData &feed);
 
     void init();
     void reset();
@@ -669,14 +705,14 @@ template <typename DataT, typename FeedT, typename BufferT> class GenericFeedsAg
 
     GenericFeedsAggragator clone();
 
-
   private:
     std::vector<ptime> times_;
 
-    std::vector<const DataT *> next_;
-    std::vector<FeedT> feeds_;
+    std::vector<const PriceFeedData *> next_;
+    std::vector<PriceData> feeds_;
     std::vector<BufferT> data_;
-    std::shared_ptr<std::unordered_map<std::string, std::vector<DataT>>> stock_data = nullptr;
+    // Shared stock_data between PriceDataImpl and GenericFeedsAggragator
+    std::shared_ptr<std::unordered_map<std::string, std::vector<PriceFeedData>>> stock_data;
 
     VecArrXb datas_valid_;
 
@@ -816,15 +852,15 @@ inline bool CSVTabDataImpl::read() {
     return true;
 }
 
-template <typename DataT, typename FeedT, typename BufferT>
-inline bool GenericFeedsAggragator<DataT, FeedT, BufferT>::read() {
+template <typename PriceFeedData, typename PriceData, typename BufferT>
+inline bool GenericFeedsAggragator<PriceFeedData, PriceData, BufferT>::read() {
     bool all_finished = true;
 
     // 遍历所有的 feeds_
     for (int i = 0; i < feeds_.size(); ++i) {
         // 如果当前 feed 的状态是 Invalid，尝试读取新的数据
         if (status_[i] == Invalid) {
-            bool _get = feeds_[i].read(); // 从 feed 中读取数据
+            bool _get = feeds_[i].sp->read(); // 从 feed 中读取数据
             if (_get) {
                 // 成功读取到数据，更新时间和状态
                 times_[i] = feeds_[i].time(); // 更新 feed 的时间
@@ -871,8 +907,9 @@ inline bool GenericFeedsAggragator<DataT, FeedT, BufferT>::read() {
 //     read();
 //     return data_;
 // }
-template <typename DataT, typename FeedT, typename BufferT>
-inline void GenericFeedsAggragator<DataT, FeedT, BufferT>::add_feed(const FeedT &feed) {
+template <typename PriceFeedData, typename PriceData, typename BufferT>
+inline void
+GenericFeedsAggragator<PriceFeedData, PriceData, BufferT>::add_feed(const PriceData &feed) {
     status_.emplace_back(Invalid);
     times_.emplace_back();
 
@@ -882,9 +919,9 @@ inline void GenericFeedsAggragator<DataT, FeedT, BufferT>::add_feed(const FeedT 
     datas_valid_.resize(feeds_.size());
 }
 
-template <typename DataT, typename FeedT, typename BufferT>
-GenericFeedsAggragator<DataT, FeedT, BufferT>
-GenericFeedsAggragator<DataT, FeedT, BufferT>::clone() {
+template <typename PriceFeedData, typename PriceData, typename BufferT>
+GenericFeedsAggragator<PriceFeedData, PriceData, BufferT>
+GenericFeedsAggragator<PriceFeedData, PriceData, BufferT>::clone() {
     GenericFeedsAggragator feed_agg_ = *this;
     for (int i = 0; i < feeds_.size(); ++i) {
         feed_agg_.feeds_[i] = feeds_[i].clone();
@@ -892,8 +929,8 @@ GenericFeedsAggragator<DataT, FeedT, BufferT>::clone() {
     return feed_agg_;
 }
 
-template <typename DataT, typename FeedT, typename BufferT>
-void GenericFeedsAggragator<DataT, FeedT, BufferT>::reset() {
+template <typename PriceFeedData, typename PriceData, typename BufferT>
+void GenericFeedsAggragator<PriceFeedData, PriceData, BufferT>::reset() {
     for (auto &ele : status_) {
         ele = Invalid;
     }

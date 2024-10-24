@@ -304,6 +304,7 @@ class BaseBroker {
     void resize(int n) { sp->resize(n); };
 
     virtual BaseBroker &set_feed(feeds::PriceData data) {
+        std::cout << "test set_feed started ..." << std::endl;
         sp->set_feed(data);
         return *this;
     }
@@ -544,7 +545,7 @@ inline void BaseBrokerImpl::process(Order &order) {
     int asset = order.asset;
     try {
         // int asset = order.asset;  // 這裡的 asset 可以直接代表股票代號或資產ID
-        
+        // auto stock_data = feed_.sp->get_stock_data();  // 確保股票數據存在
         // 從 current_map_ 中查找對應資產ID的數據
         auto it = current_map_.find(std::to_string(asset));
         if (it == current_map_.end()) {
@@ -558,8 +559,9 @@ inline void BaseBrokerImpl::process(Order &order) {
         if (time < order.valid_from) {
             order.state = OrderState::Waiting;
             return;
-        } else if (time <= order.valid_until) {
-            if (current_data->valid.coeff(asset)) {  
+        } 
+        // else if (time <= order.valid_until) {
+            // if (current_data->valid.coeff(asset)) {  
                 PriceEvaluatorInput info{
                     current_data->data.open.coeff(asset), 
                     current_data->data.high.coeff(asset),
@@ -605,14 +607,17 @@ inline void BaseBrokerImpl::process(Order &order) {
                 } else {
                     std::cout << "Order price out of bounds for asset: " << asset << std::endl;
                 }
-            } else {
-                std::cout << "Asset not valid for current time: " << asset << std::endl;
             }
-        } else {
-            order.state = OrderState::Expired;
-            std::cout << "Order expired for asset: " << asset << std::endl;
-        }
-    } catch (const std::exception &e) {
+            //  else {
+            //     std::cout << "Asset not valid for current time: " << asset << std::endl;
+            // }
+        // } 
+        // else {
+        //     order.state = OrderState::Expired;
+        //     std::cout << "Order expired for asset: " << asset << std::endl;
+        // }
+    // } 
+    catch (const std::exception &e) {
         std::cerr << "Error processing order for asset: " << asset << ": " << e.what() << '\n';
     } catch (...) {
         std::cerr << "Unknown error processing order for asset: " << asset << std::endl;
@@ -677,6 +682,7 @@ void BaseBrokerImpl::update_info(int asset) {
 inline void BaseBrokerImpl::resize(int n) {}
 
 void BaseBrokerImpl::set_feed(feeds::PriceData data) {
+    std::cout << "Setting feed: " << data.name() << std::endl;
     feed_ = data;
     std::cout << "Setting feed: " << data.name() << std::endl;
 

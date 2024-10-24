@@ -124,17 +124,17 @@ class GenericStrategy {
 
     auto &datas() const { return price_feed_agg_->datas(); }
     const auto& stock_data(const std::string& broker) const { 
-        return (*datas()).at(broker);  // 使用 std::string 來查找
+        return (datas()).at(broker);  // 使用 std::string 來查找
     }
     const auto &data(const std::string &broker_name) const {
         std::string broker_id = std::to_string(broker_agg_->broker_id(broker_name));  // 假設 broker_id 是 string
-        return (*datas()).at(broker_id);  // 使用 at() 來查找鍵
+        return (datas()).at(broker_id);  // 使用 at() 來查找鍵
     }
 
 
     const auto &common_datas() const { return common_feed_agg_->datas(); }
     const auto &common_data(int i) const {
-        const auto& map = *common_datas();  // 獲取 unordered_map
+        const auto& map = common_datas();  // 獲取 unordered_map
         const auto& keys = get_keys();     // 假設這是一個存有鍵的向量
         
         if (i < 0 || i >= keys.size()) {
@@ -151,7 +151,7 @@ class GenericStrategy {
         return it->second;  // 返回對應鍵的 vector<CommonFeedData>
     }
     std::vector<std::string> get_keys() const {
-        const auto& map = *common_datas();  // 假設 common_datas() 返回 unordered_map
+        const auto& map = common_datas();  // 假設 common_datas() 返回 unordered_map
         std::vector<std::string> keys;
         keys.reserve(map.size());  // 儲存所有鍵的空間
 

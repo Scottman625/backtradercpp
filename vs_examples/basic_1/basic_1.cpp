@@ -23,11 +23,11 @@ using namespace backtradercpp;
 struct SimpleStrategy : strategy::GenericStrategy {
     void run() override {
         // 每 50 個時間步長執行一次買入操作
-        if (time_index() % 50 == 0) {
+        if (time_index() % 50 == 3) {
             std::cout << "time_index: " << time_index() << std::endl;
             // 遍歷所有股票數據
-            std::cout << "datas size: " << (*datas()).size() << std::endl;
-            for (const auto& stock : *datas()) {
+            try{
+                for (const auto& stock : datas()) {
                 const std::string& ticker = stock.first;  // 股票代號
                 const std::vector<PriceFeedData>& data_vector = stock.second;
                 std::cout << "ticker: " << ticker << std::endl;
@@ -40,18 +40,23 @@ struct SimpleStrategy : strategy::GenericStrategy {
   
                 }
             }
+            }catch (const std::exception &e) {
+                std::cout << "Error: " << std::endl;
+                std::cerr << e.what() << '\n';
+            }
+            
         }
 
         // 每 100 個時間步長的第 40 個時間步執行一次賣出操作
         if (time_index() % 50 == 40) {
             std::cout << "time_index: " << time_index() << std::endl;
-            for (const auto& stock : *datas()) {
+            for (const auto& stock : datas()) {
                 const std::string& ticker = stock.first;
                 const std::vector<PriceFeedData>& data_vector = stock.second;
                 std::cout << "ticker: " << ticker << std::endl;
                 if (!data_vector.empty()) {
                     const PriceFeedData& latest_data = data_vector.back();  // 取最後一個元素，即最新的數據
-                    std::cout << "ticker: " << ticker << "close price: "<< latest_data.data.close.coeff(0) << std::endl;
+                    std::cout << "ticker: " << ticker << " close price: "<< latest_data.data.close.coeff(0) << std::endl;
                     close(0, stoi(ticker), latest_data.data.close.coeff(0));
                 }
 
@@ -83,76 +88,6 @@ void setConsoleUtf8() {
 #endif
 }
 
-// struct CustomObject {
-//     py::array_t<double> array;
-//     std::vector<std::string> vec1;
-//     std::vector<std::string> vec2;
-//     std::vector<std::string> vec3;
-// };
-
-// struct DataObject {
-//     std::vector<std::vector<double>> ohlc_data;
-//     std::vector<std::string> date_vector;
-//     std::vector<std::string> stock_name_vector;
-//     std::vector<std::string> stock_vector;
-// };
-
-// // 将 DataObject 序列化为 JSON 字符串
-// std::string serializeData(const DataObject& data) {
-//     json j;
-//     j["ohlc_data"] = data.ohlc_data;
-//     j["date_vector"] = data.date_vector;
-//     j["stock_name_vector"] = data.stock_name_vector;
-//     j["stock_vector"] = data.stock_vector;
-//     return j.dump(); // 返回 JSON 字符串
-// }
-
-// // 从 JSON 字符串反序列化为 DataObject
-// DataObject deserializeData(const std::string& dataStr) {
-//     json j = json::parse(dataStr);
-//     DataObject data;
-//     data.ohlc_data = j["ohlc_data"].get<std::vector<std::vector<double>>>();
-//     data.date_vector = j["date_vector"].get<std::vector<std::string>>();
-//     data.stock_name_vector = j["stock_name_vector"].get<std::vector<std::string>>();
-//     data.stock_vector = j["stock_vector"].get<std::vector<std::string>>();
-//     return data;
-// }
-
-
-// Helper function to convert std::string to std::wstring
-// std::wstring stringToWstring(const std::string& str) {
-//     int size_needed = MultiByteToWideChar(CP_UTF8, 0, &str[0], (int)str.size(), NULL, 0);
-//     std::wstring wstrTo(size_needed, 0);
-//     MultiByteToWideChar(CP_UTF8, 0, &str[0], (int)str.size(), &wstrTo[0], size_needed);
-//     return wstrTo;
-// }
-
-// void runBacktrader(py::array_t<double> ohlc_data, 
-//                    const std::vector<std::string>& date_vector, 
-//                    const std::vector<std::string>& stock_name_vector, 
-//                    const std::vector<std::string>& stock_vector) {
-//     SetConsoleOutputCP(CP_UTF8);
-//     std::cout << "Running runBacktrader" << std::endl;
-
-//     try {
-
-//         // Initialize PriceData
-//         std::shared_ptr<feeds::PriceData> priceData = std::make_shared<feeds::PriceData>(ohlc_data, date_vector, stock_name_vector, stock_vector, feeds::TimeStrConv::delimited_date);
-
-//         // Create and configure Cerebro
-//         Cerebro cerebro;
-//         std::cout << "Adding broker..." << std::endl;
-//         cerebro.add_broker(
-//             broker::BaseBroker(5000000, 0.0005, 0.001)
-//                 .set_feed(*priceData)
-//         );
-//         cerebro.add_strategy(std::make_shared<SimpleStrategy>());
-//         cerebro.run();
-//     } catch (const std::exception &e) {
-//         std::cerr << "Error: " << e.what() << std::endl;
-//     }
-// }
-
 void runBacktrader(const std::vector<std::vector<std::string>>& data, 
                    const std::vector<std::string>& columns ) {
     SetConsoleOutputCP(CP_UTF8);
@@ -161,8 +96,8 @@ void runBacktrader(const std::vector<std::vector<std::string>>& data,
     try {
         // Initialize PriceData
         std::shared_ptr<feeds::PriceData> priceData = std::make_shared<feeds::PriceData>(data, columns, feeds::TimeStrConv::delimited_date);
-
-        Cerebro cerebro;
+        std::cout << "PriceData initialized" << std::endl;
+        Cerebro cerebro(*priceData);
         std::cout << "Adding broker..." << std::endl;
         cerebro.add_broker(
             broker::BaseBroker(5000000, 0.0005, 0.001)

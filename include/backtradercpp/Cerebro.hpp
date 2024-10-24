@@ -13,6 +13,8 @@ namespace backtradercpp {
 enum class VerboseLevel { None, OnlySummary, AllInfo };
 class Cerebro {
   public:
+    Cerebro(feeds::PriceData &priceData)
+        : price_feeds_agg_(feeds::PriceFeedAggragator(priceData.sp->get_stock_data())) {}
     // window is for strategy. DataFeed and Broker doesn't store history data.
     void add_broker(broker::BaseBroker broker, int window = 1);
     void add_common_data(feeds::BaseCommonDataFeed data, int window);
@@ -38,7 +40,7 @@ class Cerebro {
         const auto &map = price_feeds_agg_.datas(); // 假設這返回 unordered_map
 
         // 遍歷 unordered_map 並將其轉換為 PriceFeedDataBuffer
-        for (const auto &pair : *map) {
+        for (const auto &pair : map) {
             for (const auto &price_feed_data : pair.second) {
                 PriceFeedDataBuffer buffer;
                 buffer.load_from_price_feed_data(price_feed_data); // 假設有這樣的函數
@@ -64,12 +66,12 @@ class Cerebro {
     ptime start_{boost::posix_time::min_date_time}, end_{boost::posix_time::max_date_time};
 
     VerboseLevel verbose_ = VerboseLevel::OnlySummary;
+
 };
 
 void Cerebro::add_broker(broker::BaseBroker broker, int window) {
     std::cout << "add_broker test started.." << std::endl;
     price_feeds_agg_.add_feed(broker.feed());
-    std::cout << "price_feeds_agg data size: " << (*price_feeds_agg_.datas()).size() << std::endl;
     // price_feeds_agg_.set_window(price_feeds_agg_.datas().size() - 1, window);
     std::cout << "add_broker test test02.." << std::endl;
     broker_agg_.add_broker(broker);
@@ -93,78 +95,15 @@ inline void Cerebro::set_range(const date &start, const date &end) {
     end_ = ptime(end);
 }
 
-// void Cerebro::run() {
-//     // std::cout << "Run test started.." << std::endl;
-//     if (verbose_ == VerboseLevel::AllInfo)
-//         fmt::print(fmt::fg(fmt::color::yellow), "Runnng strategy..\n");
-//     // fmt::print("Start init strategy..\n");
-//     init_strategy();
-//     // fmt::print("Finished init strategy..\n");
-//     while (!price_feeds_agg_.finished()) {
-//         // std::cout << "test"<< std::endl;
-//         spdlog::stopwatch sw;
-//         // std::cout << "testaaa"<< std::endl;
-//         if (price_feeds_agg_.time() > end_) {
-//             fmt::print("End of the range.\n");
-//             break;
-//             }
-//         if (!price_feeds_agg_.read()){
-//             fmt::print("End of the range2.\n");
-//             break;
-//         }
-//         std::cout << "price_feeds_agg_.time(): " << price_feeds_agg_.time() << std::endl;
-//         common_feeds_agg_.read();
-//         if (price_feeds_agg_.time() >= start_) {
-//             if (verbose_ == VerboseLevel::AllInfo)
-//                 try {
-
-//                 // fmt::print(fmt::runtime("┌{0:─^{2}}┐\n"
-//                 //                         "│{1: ^{2}}│\n"
-//                 //                         "└{0:─^{2}}┘\n"),
-//                 //            "", util::to_string(price_feeds_agg_.time()), 21);
-
-//             } catch (const std::exception& e) {
-//                 std::cerr << "錯誤: - " << e.what() << '\n';
-
-//             }
-
-//             // fmt::print("{}\n", util::to_string(feeds_agg_.time()));
-//             // fmt::print("process old orders\n");
-//             // fmt::print("Start process_old_orders\n");
-//             broker_agg_.process_old_orders();
-//             // fmt::print("Start execute strategy_\n");
-//             auto order_pool = strategy_->execute();
-//             // fmt::print("Start process order_pool\n");
-//             broker_agg_.process(order_pool);
-//             // fmt::print("Start process_terms\n");
-//             broker_agg_.process_terms();
-//             // fmt::print("Start update_info\n");
-//             broker_agg_.update_info();
-//             // fmt::print("Finished update_info\n");
-
-//             if (verbose_ == VerboseLevel::AllInfo) {
-//                 // fmt::print("cash: {:12.4f},  total_wealth: {:12.2f}\n",
-//                 broker_agg_.total_cash(),
-//                            broker_agg_.total_wealth();
-//                 // fmt::print("Using {} seconds.\n", util::sw_to_seconds(sw));
-//             }
-//             // fmt::print("The test number is: {:d}\n", 409);
-//         }
-//     }
-//     if (verbose_ == VerboseLevel::OnlySummary || verbose_ == VerboseLevel::AllInfo)
-//         broker_agg_.summary();
-//     strategy_->finish_all();
-//     // strategy_-
-// }
-
 void Cerebro::run() {
     if (verbose_ == VerboseLevel::AllInfo)
         fmt::print(fmt::fg(fmt::color::yellow), "Running strategy with multiple stocks..\n");
 
-    init_strategy();  // 初始化策略
+    init_strategy(); // 初始化策略
 
-    ptime previous_time = boost::posix_time::not_a_date_time;  // 记录上一次的时间
-    fmt::print("previous_time initialized 1: {}\n", boost::posix_time::to_simple_string(previous_time));
+    ptime previous_time = boost::posix_time::not_a_date_time; // 记录上一次的时间
+    fmt::print("previous_time initialized 1: {}\n",
+               boost::posix_time::to_simple_string(previous_time));
 
     while (!price_feeds_agg_.finished()) {
         spdlog::stopwatch sw; // 用于记录时间
@@ -179,15 +118,15 @@ void Cerebro::run() {
         }
 
         // 获取当前时间
-        ptime current_time = price_feeds_agg_.time(); 
-        // fmt::print("times_[i]: {}\n", boost::posix_time::to_simple_string(current_time)); 
+        ptime current_time = price_feeds_agg_.time();
+        // fmt::print("times_[i]: {}\n", boost::posix_time::to_simple_string(current_time));
 
-        common_feeds_agg_.read();
+        // common_feeds_agg_.read();
 
         // 判断是否在指定时间范围内
         if (current_time >= start_) {
             try {
-                
+
                 // 如果日期发生变化，则增加 time_index_
                 if (current_time.date() != previous_time.date()) {
                     fmt::print("Date changed from {} to {}. Incrementing time_index_\n",
@@ -198,9 +137,10 @@ void Cerebro::run() {
                     previous_time = current_time; // 更新上一次的时间
                 }
 
-                if( previous_time.is_not_a_date_time()){
+                if (previous_time.is_not_a_date_time()) {
                     previous_time = current_time;
-                    fmt::print("previous_time initialized 2: {}\n", boost::posix_time::to_simple_string(previous_time));
+                    fmt::print("previous_time initialized 2: {}\n",
+                               boost::posix_time::to_simple_string(previous_time));
                 }
 
                 // 处理旧订单
@@ -217,7 +157,7 @@ void Cerebro::run() {
                     fmt::print("Using {} seconds.\n", util::sw_to_seconds(sw));
                 }
             } catch (const std::exception &e) {
-                std::cerr << "錯誤: - " << e.what() << '\n';
+                std::cout << "錯誤: - " << e.what() << '\n';
             }
         }
     }
@@ -228,8 +168,6 @@ void Cerebro::run() {
 
     strategy_->finish_all();
 }
-
-
 
 void Cerebro::reset() {
     price_feeds_agg_.reset();
