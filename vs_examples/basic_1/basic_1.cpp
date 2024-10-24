@@ -24,11 +24,13 @@ struct SimpleStrategy : strategy::GenericStrategy {
     void run() override {
         // 每 50 個時間步長執行一次買入操作
         if (time_index() % 50 == 0) {
+            std::cout << "time_index: " << time_index() << std::endl;
             // 遍歷所有股票數據
-            for (const auto& stock : datas()) {
+            std::cout << "datas size: " << (*datas()).size() << std::endl;
+            for (const auto& stock : *datas()) {
                 const std::string& ticker = stock.first;  // 股票代號
                 const std::vector<PriceFeedData>& data_vector = stock.second;
-                
+                std::cout << "ticker: " << ticker << std::endl;
                 // 確保有最新數據並操作資產
                 if (!data_vector.empty()) {
                     const PriceFeedData& latest_data = data_vector.back();  // 取最後一個元素，即最新的數據
@@ -42,13 +44,14 @@ struct SimpleStrategy : strategy::GenericStrategy {
 
         // 每 100 個時間步長的第 40 個時間步執行一次賣出操作
         if (time_index() % 50 == 40) {
-            for (const auto& stock : datas()) {
+            std::cout << "time_index: " << time_index() << std::endl;
+            for (const auto& stock : *datas()) {
                 const std::string& ticker = stock.first;
                 const std::vector<PriceFeedData>& data_vector = stock.second;
-
+                std::cout << "ticker: " << ticker << std::endl;
                 if (!data_vector.empty()) {
                     const PriceFeedData& latest_data = data_vector.back();  // 取最後一個元素，即最新的數據
-
+                    std::cout << "ticker: " << ticker << "close price: "<< latest_data.data.close.coeff(0) << std::endl;
                     close(0, stoi(ticker), latest_data.data.close.coeff(0));
                 }
 
@@ -158,14 +161,7 @@ void runBacktrader(const std::vector<std::vector<std::string>>& data,
     try {
         // Initialize PriceData
         std::shared_ptr<feeds::PriceData> priceData = std::make_shared<feeds::PriceData>(data, columns, feeds::TimeStrConv::delimited_date);
-        // for(int i = 0; i < data.size(); i++){
-        //     if (i <=10){for(int j = 0; j < data[i].size(); j++){
-        //         std::cout << data[i][j] << " ";
-        //     }
-        //     std::cout <<"==================================="<< std::endl;
-        //     }
-        // }
-        // Create and configure Cerebro
+
         Cerebro cerebro;
         std::cout << "Adding broker..." << std::endl;
         cerebro.add_broker(

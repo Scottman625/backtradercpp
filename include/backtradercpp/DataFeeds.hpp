@@ -27,7 +27,8 @@ namespace feeds {
 struct TimeStrConv {
     using func_type = std::function<std::string(const std::string &)>;
 
-    // non_delimited_date函數將無分隔符的日期字符串（如"20100202"）轉換為有分隔符的日期字符串（如"2010-02-02 00:00:00"）
+    // non_delimited_date函數將無分隔符的日期字符串（如"20100202"）轉換為有分隔符的日期字符串（如"2010-02-02
+    // 00:00:00"）
     static std::string non_delimited_date(const std::string &date_str) {
         std::string res_date = "0000-00-00 00:00:00";
         res_date.replace(0, 4, std::string_view{date_str.data(), 4});
@@ -82,9 +83,8 @@ template <typename T> class GenericDataImpl {
     std::string name_;
 };
 
-
 class BasePriceDataImpl : public GenericDataImpl<PriceFeedData> {
-public:
+  public:
     BasePriceDataImpl() = default;
     explicit BasePriceDataImpl(TimeStrConv::func_type time_converter)
         : GenericDataImpl(time_converter) {}
@@ -94,16 +94,15 @@ public:
     virtual std::shared_ptr<BasePriceDataImpl> clone();
 
     int assets() const { return assets_; }
-    virtual const std::vector<std::string>& codes() const { return codes_; }
+    virtual const std::vector<std::string> &codes() const { return codes_; }
 
-protected:
+  protected:
     friend class FeedsAggragator;
 
     virtual void init() { print(fg(fmt::color::yellow), "Total {} assets.\n", assets_); }
     int assets_ = 0;
     std::vector<std::string> codes_;
 };
-
 
 struct CSVRowParaser {
     inline static boost::escaped_list_separator<char> esc_list_sep{"", ",", "\"\'"};
@@ -204,11 +203,14 @@ class CSVDirDataImpl : public BasePriceDataImpl {
 };
 
 class PriceDataImpl : public BasePriceDataImpl {
-public:
-    PriceDataImpl(const std::vector<std::vector<std::string>>& data,
-                  const std::vector<std::string>& columns,
+  public:
+    PriceDataImpl(const std::vector<std::vector<std::string>> &data,
+                  const std::vector<std::string> &columns,
+                  std::shared_ptr<std::unordered_map<std::string, std::vector<PriceFeedData>>>
+                      shared_stock_data,
                   TimeStrConv::func_type time_converter = nullptr)
-        : data_(data), columns_(columns), BasePriceDataImpl(time_converter) {
+        : data_(data), columns_(columns), stock_data(shared_stock_data),
+          BasePriceDataImpl(time_converter) {
         if (time_converter) {
             time_converter_ = time_converter;
         } else {
@@ -221,30 +223,35 @@ public:
     bool read() override;
     void reset() override;
 
-    int assets() const  { return assets_; }
+    int assets() const { return assets_; }
 
     std::shared_ptr<BasePriceDataImpl> clone() override;
 
     void cast_ohlc_data_(std::vector<std::string> &row_string, OHLCData &dest);
 
-    const std::vector<std::string>& codes() const override { return BasePriceDataImpl::codes(); }
+    const std::vector<std::string> &codes() const override { return BasePriceDataImpl::codes(); }
 
     // 在讀取每筆資料後，將其按照股票代號進行分類
-    void process_data(PriceFeedData& data) {
-        stock_data[data.ticker_].push_back(data);
+    void process_data(PriceFeedData &data) {
+        (*stock_data)[data.ticker_].push_back(data); // 先解引用 shared_ptr 再使用 []
+        std::cout << "stock_data size after process data: " << stock_data->size() << std::endl;
     }
 
     std::vector<std::vector<std::string>> data_;
     std::vector<std::string> columns_;
-    std::unordered_map<std::string, std::vector<PriceFeedData>> stock_data;
 
-private:
+    std::shared_ptr<std::unordered_map<std::string, std::vector<PriceFeedData>>>
+    get_stock_data() const {
+        return stock_data;
+    }
+
+  private:
     void init() override;
+    std::shared_ptr<std::unordered_map<std::string, std::vector<PriceFeedData>>>
+        stock_data = nullptr; // 使用 shared_ptr 共享
 
-    
     std::vector<std::vector<std::string>> combined_data_;
     std::vector<std::string> unique_dates_vector_;
-    
 
     int index;
     size_t assets_;
@@ -258,27 +265,27 @@ inline bool PriceDataImpl::read() {
             finished_ = true;
             return false;
         }
-        
+
         // fmt::print("Reading data...2\n");
         auto row_string = data_[index];
 
         // fmt::print("Reading data...3\n");
         next_.ticker_ = row_string[0];
-        std::string raw_time_str = row_string[2];  // 例如 "2024-05-24"
-        raw_time_str += " 00:00:00";  // 添加时间部分
+        std::string raw_time_str = row_string[2]; // 例如 "2024-05-24"
+        raw_time_str += " 00:00:00";              // 添加时间部分
 
         try {
             next_.time = boost::posix_time::time_from_string(raw_time_str);
-        } catch (const std::exception& e) {
+        } catch (const std::exception &e) {
             std::cerr << "Error parsing time: " << e.what() << "\n"
-                    << "Invalid string: " << raw_time_str << std::endl;
+                      << "Invalid string: " << raw_time_str << std::endl;
         }
         // next_.time = boost::posix_time::time_from_string(row_string[2]);
         cast_ohlc_data_(row_string, next_.data);
         next_.volume.setConstant(1e12);
         next_.validate_assets();
 
-        process_data(next_);  // 根據股票代號分別儲存處理
+        process_data(next_); // 根據股票代號分別儲存處理
 
         ++index;
         return true;
@@ -295,10 +302,10 @@ inline void PriceDataImpl::reset() {
 }
 
 inline void PriceDataImpl::cast_ohlc_data_(std::vector<std::string> &row_string, OHLCData &dest) {
-    if (row_string.size() < 5) {  // 确保 row_string 至少有5个元素
+    if (row_string.size() < 5) { // 确保 row_string 至少有5个元素
         throw std::invalid_argument("Expected row_string to have at least 5 elements.");
     }
-    
+
     try {
         // 修剪并解析开盘价
         boost::algorithm::trim(row_string[3]);
@@ -309,7 +316,6 @@ inline void PriceDataImpl::cast_ohlc_data_(std::vector<std::string> &row_string,
         boost::algorithm::trim(row_string[4]);
         dest.close.coeffRef(0) = boost::lexical_cast<double>(row_string[4]);
         // std::cout << "today close: " << row_string[4] << std::endl;
-
 
         // 修剪并解析最低价
         boost::algorithm::trim(row_string[5]);
@@ -331,11 +337,10 @@ std::shared_ptr<BasePriceDataImpl> PriceDataImpl::clone() {
     return std::make_shared<PriceDataImpl>(*this);
 }
 
-
 void PriceDataImpl::init() {
     size_t rows = data_.size();
     size_t cols = data_[0].size();
-    
+
     // 将 assets_ 设置为股票的数量（即行数）
     assets_ = rows;
 
@@ -345,18 +350,17 @@ void PriceDataImpl::init() {
     codes_.resize(rows);
     for (size_t i = 0; i < rows; ++i) {
         // 假设股票代码位于每行的某个位置，例如第 1 列
-        codes_[i] = data_[i][0];  // 假设股票代码是每行的第 0 列（可以根据实际数据调整列索引）
+        codes_[i] = data_[i][0]; // 假设股票代码是每行的第 0 列（可以根据实际数据调整列索引）
     }
 
     // Initialize combined_data_ with additional columns for date, stock name, and stock
     next_.resize(rows);
 }
 
-
 class BaseCommonDataFeedImpl : public GenericDataImpl<CommonFeedData> {
   public:
     BaseCommonDataFeedImpl(TimeStrConv::func_type time_converter)
-        : GenericDataImpl(time_converter){};
+        : GenericDataImpl(time_converter) {};
     BaseCommonDataFeedImpl(const BaseCommonDataFeedImpl &impl_) = default;
     virtual std::shared_ptr<BaseCommonDataFeedImpl> clone() {
         return std::make_shared<BaseCommonDataFeedImpl>(*this);
@@ -465,9 +469,6 @@ struct CSVCommonDataFeed : BaseCommonDataFeed {
 //         throw std::runtime_error("Invalid data structure.");
 //     }
 
-
-
-
 //     int assets() const { return sp->assets(); }
 
 //     const auto& time() const { return sp->data().time; }
@@ -485,19 +486,19 @@ struct CSVCommonDataFeed : BaseCommonDataFeed {
 // };
 
 class BasePriceDataFeed {
-public:
+  public:
     BasePriceDataFeed() = default;
 
-    explicit BasePriceDataFeed(std::shared_ptr<BasePriceDataImpl> sp) 
+    explicit BasePriceDataFeed(std::shared_ptr<BasePriceDataImpl> sp)
         : sp(std::dynamic_pointer_cast<PriceDataImpl>(std::move(sp))) {
         if (!this->sp) {
             throw std::runtime_error("Failed to cast BasePriceDataImpl to PriceDataImpl.");
         }
     }
 
-    BasePriceDataFeed(const BasePriceDataFeed& other) : sp(other.sp) {}
+    BasePriceDataFeed(const BasePriceDataFeed &other) : sp(other.sp) {}
 
-    BasePriceDataFeed& operator=(const BasePriceDataFeed& other) {
+    BasePriceDataFeed &operator=(const BasePriceDataFeed &other) {
         if (this != &other) {
             sp = other.sp;
         }
@@ -506,37 +507,38 @@ public:
     std::shared_ptr<PriceDataImpl> sp = nullptr;
 
     // 调用 sp->assets() 获取 assets_ 值
-    int assets() { 
+    int assets() {
         if (sp) {
             return sp->assets();
         }
-        return 0;  // 如果 sp 为空，返回 0
+        return 0; // 如果 sp 为空，返回 0
     }
 
     bool read() { return sp->read(); }
 
     virtual void reset() { sp->reset(); }
 
-    const auto& codes() const { return sp->codes(); }
+    const auto &codes() const { return sp->codes(); }
 
-    const auto& time() const { return sp->data().time; }
+    const auto &time() const { return sp->data().time; }
 
-    const auto& name() const { return sp->name(); }
+    const auto &name() const { return sp->name(); }
 
-    BasePriceDataFeed& set_name(const std::string& name) {
+    BasePriceDataFeed &set_name(const std::string &name) {
         sp->set_name(name);
         return *this;
     }
 
     virtual BasePriceDataFeed clone() { return BasePriceDataFeed(sp->clone()); }
 
-    PriceFeedData* data_ptr(const std::string& code) {
+    PriceFeedData *data_ptr(const std::string &code) {
         // 实现返回具体资产的数据指针
         auto price_data_impl = std::dynamic_pointer_cast<PriceDataImpl>(sp);
         if (price_data_impl) {
-            auto it = price_data_impl->stock_data.find(code);
-            if (it != price_data_impl->stock_data.end()) {
-                return &it->second[0];  // 返回第一个数据指针
+            // 正确访问 price_data_impl 的 stock_data 成员变量
+            auto it = price_data_impl->get_stock_data()->find(code); // 解引用 shared_ptr
+            if (it != price_data_impl->get_stock_data()->end()) {
+                return &it->second[0]; // 返回第一个数据指针
             }
         }
         return nullptr;
@@ -545,15 +547,13 @@ public:
     // std::shared_ptr<PriceDataImpl> sp = nullptr;
 };
 
-
-
-
 // struct CSVDirPriceData : BasePriceDataFeed {
 //     std::shared_ptr<CSVDirDataImpl> sp;
 
 //     // 初始化 sp，使用原始数据目录和其他参数创建 CSVDirDataImpl 实例。
 //     // 调用 set_base_sp() 方法，将 BasePriceDataFeed 的 sp 成员设置为当前类的 sp。
-//     CSVDirPriceData(const std::string &raw_data_dir, std::array<int, 5> tohlc_map = {0, 1, 2, 3, 4},
+//     CSVDirPriceData(const std::string &raw_data_dir, std::array<int, 5> tohlc_map = {0, 1, 2, 3,
+//     4},
 //                     TimeStrConv::func_type time_converter = nullptr)
 //         : sp(std::make_shared<CSVDirDataImpl>(raw_data_dir, tohlc_map, time_converter)) {
 //         set_base_sp();
@@ -603,37 +603,36 @@ public:
 // };
 
 class PriceData : public BasePriceDataFeed {
-public:
-    PriceData(const std::vector<std::vector<std::string>>& data, 
-              const std::vector<std::string>& columns, 
+  public:
+    PriceData(const std::vector<std::vector<std::string>> &data,
+              const std::vector<std::string> &columns,
               TimeStrConv::func_type time_converter = nullptr)
         : BasePriceDataFeed(std::make_shared<PriceDataImpl>(data, columns, time_converter)) {
         // 在此处，sp 已经被设置为 PriceDataImpl 类型
     }
 
-    PriceData& set_name(const std::string &name) {
+    PriceData &set_name(const std::string &name) {
         BasePriceDataFeed::set_name(name);
         return *this;
     }
 
-    int assets() const  { 
+    int assets() const {
         if (sp) {
-            return sp->assets();  // 调用 sp 中的 assets() 方法
+            return sp->assets(); // 调用 sp 中的 assets() 方法
         }
-        return 0;  // 如果 sp 为空，返回 0
+        return 0; // 如果 sp 为空，返回 0
     }
 
-    BasePriceDataFeed clone() override { 
-        return BasePriceDataFeed(sp->clone()); 
-    }
+    BasePriceDataFeed clone() override { return BasePriceDataFeed(sp->clone()); }
 };
-
-
 
 //-------------------------------------------------------------------
 template <typename DataT, typename FeedT, typename BufferT> class GenericFeedsAggragator {
   public:
     // GenericFeedsAggragator() = default;
+    GenericFeedsAggragator(
+        std::shared_ptr<std::unordered_map<std::string, std::vector<DataT>>> shared_stock_data)
+        : stock_data(shared_stock_data) {}
 
     const auto &datas() const { return stock_data; }
     const auto &datas_valid() const { return datas_valid_; }
@@ -656,7 +655,7 @@ template <typename DataT, typename FeedT, typename BufferT> class GenericFeedsAg
 
     // void set_window(int src, int window) { stock_data[src].set_window(window); };
 
-    // void set_window(int src, int window) { 
+    // void set_window(int src, int window) {
     //     for (auto &datas : stock_data) {
     //         for(PriceFeedData &data : datas.second) {
     //             data.set_window(window);
@@ -670,13 +669,14 @@ template <typename DataT, typename FeedT, typename BufferT> class GenericFeedsAg
 
     GenericFeedsAggragator clone();
 
+
   private:
     std::vector<ptime> times_;
 
     std::vector<const DataT *> next_;
     std::vector<FeedT> feeds_;
     std::vector<BufferT> data_;
-    std::unordered_map<std::string, std::vector<DataT>> stock_data;
+    std::shared_ptr<std::unordered_map<std::string, std::vector<DataT>>> stock_data = nullptr;
 
     VecArrXb datas_valid_;
 
@@ -824,16 +824,16 @@ inline bool GenericFeedsAggragator<DataT, FeedT, BufferT>::read() {
     for (int i = 0; i < feeds_.size(); ++i) {
         // 如果当前 feed 的状态是 Invalid，尝试读取新的数据
         if (status_[i] == Invalid) {
-            bool _get = feeds_[i].read();  // 从 feed 中读取数据
+            bool _get = feeds_[i].read(); // 从 feed 中读取数据
             if (_get) {
                 // 成功读取到数据，更新时间和状态
-                times_[i] = feeds_[i].time();  // 更新 feed 的时间
-                status_[i] = Valid;  // 设置状态为 Valid
-                all_finished = false;  // 至少有一个 feed 还没结束
+                times_[i] = feeds_[i].time(); // 更新 feed 的时间
+                status_[i] = Valid;           // 设置状态为 Valid
+                all_finished = false;         // 至少有一个 feed 还没结束
             } else {
                 // 如果读取失败，设置为 Finished 状态并将时间设置为 max_date_time
                 status_[i] = Finished;
-                times_[i] = boost::posix_time::max_date_time;  // 将时间设置为最大值
+                times_[i] = boost::posix_time::max_date_time; // 将时间设置为最大值
             }
         }
     }
@@ -844,26 +844,26 @@ inline bool GenericFeedsAggragator<DataT, FeedT, BufferT>::read() {
     }
 
     // 找到所有 feed 中最早的时间，作为下一步的时间
-    auto p = std::min_element(times_.begin(), times_.end());  // 查找最小时间
-    time_ = *p;  // 将 time_ 设置为最早的时间
+    auto p = std::min_element(times_.begin(), times_.end()); // 查找最小时间
+    time_ = *p;                                              // 将 time_ 设置为最早的时间
 
     // 遍历 feeds_，处理数据
     for (int i = 0; i < feeds_.size(); ++i) {
         if (times_[i] == time_) {
             // 如果 feed 的时间与最小时间相同，读取数据并设置状态为 Invalid
-            data_[i].push_back(feeds_[i].sp->next());  // 添加数据
-            status_[i] = Invalid;  // 将状态设置为 Invalid，准备下一轮读取
-            datas_valid_[i] = true;  // 标记该 feed 的数据为有效
+            data_[i].push_back(feeds_[i].sp->next()); // 添加数据
+            status_[i] = Invalid;   // 将状态设置为 Invalid，准备下一轮读取
+            datas_valid_[i] = true; // 标记该 feed 的数据为有效
         } else {
             // 否则，插入一个空数据，并标记为无效
-            data_[i].push_back_();  // 插入一个空数据
-            datas_valid_[i] = false;  // 标记该 feed 的数据为无效
+            data_[i].push_back_();   // 插入一个空数据
+            datas_valid_[i] = false; // 标记该 feed 的数据为无效
         }
     }
 
     // 如果有任何一个 feed 的数据是有效的，返回 true，否则返回 false
     bool success = datas_valid_.any();
-    finished_ = !success;  // 如果所有数据都是无效的，标记为 finished
+    finished_ = !success; // 如果所有数据都是无效的，标记为 finished
     return success;
 }
 
@@ -939,8 +939,8 @@ inline void CSVDirDataImpl::init() {
             adj_files.emplace_back(adj_file_path);
             try {
                 raw_data_filenames.emplace_back(entry.path().string());
-                
-            } catch (const std::exception& e) {
+
+            } catch (const std::exception &e) {
                 std::cerr << "錯誤:在處理文件路徑時出現問題 - " << e.what() << '\n';
                 std::cerr << "原始數據文件路徑: " << entry.path().string() << '\n';
                 std::cerr << "調整後數據文件路徑: " << adj_file_path.string() << '\n';
@@ -974,26 +974,25 @@ inline void CSVDirDataImpl::init() {
 }
 
 // #define UNWRAP(...) __VA_ARGS__
-// #define BK_CSVDirectoryDataImpl_extra_col(name, init)                                              \
-//     inline CSVDirDataImpl &CSVDirDataImpl::extra_##name##_col(                                     \
-//         const std::vector<std::pair<int, std::string>> &cols) {                                    \
-//         for (const auto &col : cols) {                                                             \
-//             extra_##name##_col_.emplace_back(col.first);                                           \
+// #define BK_CSVDirectoryDataImpl_extra_col(name, init) \
+//     inline CSVDirDataImpl &CSVDirDataImpl::extra_##name##_col( \
+//         const std::vector<std::pair<int, std::string>> &cols) { \
+//         for (const auto &col : cols) { \
+//             extra_##name##_col_.emplace_back(col.first); \
 //                                                                                                    \
-//             const auto &name_ = col.second;                                                        \
-//             extra_##name##_col_names_.emplace_back(name_);                                         \
-//             next_.name##_data_[name_] = init;                                                      \
-//             std::cout << name_ << " size " << next_.name##_data_[name_].size() << std::endl;       \
-//             extra_##name##_data_ref_.emplace_back(next_.name##_data_[name_]);                      \
-//         }                                                                                          \
-//         std::cout << extra_num_data_ref_[0].get().size() << std::endl;                             \
-//         return *this;                                                                              \
+//             const auto &name_ = col.second; \
+//             extra_##name##_col_names_.emplace_back(name_); \
+//             next_.name##_data_[name_] = init; \
+//             std::cout << name_ << " size " << next_.name##_data_[name_].size() << std::endl; \
+//             extra_##name##_data_ref_.emplace_back(next_.name##_data_[name_]); \
+//         } \
+//         std::cout << extra_num_data_ref_[0].get().size() << std::endl; \
+//         return *this; \
 //     }
 // BK_CSVDirectoryDataImpl_extra_col(num, UNWRAP(VecArrXd::Zero(assets_)));
 // BK_CSVDirectoryDataImpl_extra_col(str, UNWRAP(std::vector<std::string>(assets_)));
 // #undef BK_CSVDirectoryDataImpl_extra_col
 // #undef UNWRAP
-
 
 bool CSVDirDataImpl::read() {
 

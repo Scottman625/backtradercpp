@@ -38,7 +38,7 @@ class Cerebro {
         const auto &map = price_feeds_agg_.datas(); // 假設這返回 unordered_map
 
         // 遍歷 unordered_map 並將其轉換為 PriceFeedDataBuffer
-        for (const auto &pair : map) {
+        for (const auto &pair : *map) {
             for (const auto &price_feed_data : pair.second) {
                 PriceFeedDataBuffer buffer;
                 buffer.load_from_price_feed_data(price_feed_data); // 假設有這樣的函數
@@ -69,7 +69,7 @@ class Cerebro {
 void Cerebro::add_broker(broker::BaseBroker broker, int window) {
     std::cout << "add_broker test started.." << std::endl;
     price_feeds_agg_.add_feed(broker.feed());
-    std::cout << "price_feeds_agg data size: " << price_feeds_agg_.datas().size() << std::endl;
+    std::cout << "price_feeds_agg data size: " << (*price_feeds_agg_.datas()).size() << std::endl;
     // price_feeds_agg_.set_window(price_feeds_agg_.datas().size() - 1, window);
     std::cout << "add_broker test test02.." << std::endl;
     broker_agg_.add_broker(broker);
