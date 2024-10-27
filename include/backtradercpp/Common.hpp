@@ -16,7 +16,6 @@
 #include <unordered_map>
 #include <fort.hpp>
 
-
 #include "util.hpp"
 
 namespace backtradercpp {
@@ -38,7 +37,7 @@ enum OrderState { Success, Waiting, Expired };
 enum class Sel { All };
 
 struct OHLCData {
-    VecArrXd open, high, low, close;
+    double open, high, low, close;
     void resize(int assets);
     void reset();
 };
@@ -54,7 +53,7 @@ struct PriceFeedData {
     std::unordered_map<std::string, VecArrXd> num_data_;
     std::unordered_map<std::string, std::vector<std::string>> str_data_;
 
-    std::string ticker_;  // 股票代號
+    std::string ticker_; // 股票代號
 
     void validate_assets();
     void resize(int assets);
@@ -65,13 +64,12 @@ struct CommonFeedData {
     boost::posix_time::ptime time;
     std::unordered_map<std::string, double> num_data_;
     std::unordered_map<std::string, std::string> str_data_;
-
 };
 template <typename T> class FeedDataBuffer {
   public:
     FeedDataBuffer() = default;
     FeedDataBuffer(int window) : window_(window) { set_window(window_); }
-    FeedDataBuffer(const PriceFeedData& data) {
+    FeedDataBuffer(const PriceFeedData &data) {
         data_.push_back(data.data);
         window_ = 1;
     }
@@ -164,19 +162,19 @@ class PriceFeedDataBuffer : public FeedDataBuffer<PriceFeedData> {
     // const auto &str(int k, const std::string &name) const;
     // const auto &str(const std::string &name) const;
 
-        // 假設有一個方法可以將數據載入
-void load_from_price_feed_data(const PriceFeedData& price_feed_data) {
-    // time = price_feed_data.time;
+    // 假設有一個方法可以將數據載入
+    void load_from_price_feed_data(const PriceFeedData &price_feed_data) {
+        // time = price_feed_data.time;
 
-    // 複製開盤價
-    this->open(-1) = price_feed_data.data.open;  // 假設 open_data 是一個資料成員
-    this->high(-1) = price_feed_data.data.high;
-    this->low(-1) = price_feed_data.data.low;
-    this->close(-1) = price_feed_data.data.close;
-    this->adj_close(-1) = price_feed_data.adj_data.close;
+        // 複製開盤價
+        this->open(-1) = price_feed_data.data.open; // 假設 open_data 是一個資料成員
+        this->high(-1) = price_feed_data.data.high;
+        this->low(-1) = price_feed_data.data.low;
+        this->close(-1) = price_feed_data.data.close;
+        this->adj_close(-1) = price_feed_data.adj_data.close;
 
-    this->volume(-1) = price_feed_data.volume.sum();  // 假設是累加成交量
-}
+        this->volume(-1) = price_feed_data.volume.sum(); // 假設是累加成交量
+    }
 
   private:
     int assets_ = 0;
@@ -239,6 +237,7 @@ struct Order {
     int asset;
     double price = 0;
     int volume = 0;
+    int time_index = 0;
     double value = 0; // price*volume
     double fee = 0;   // Commission + tax
     bool processed = false;
@@ -285,7 +284,6 @@ struct Portfolio {
     void transfer_cash(int cash);
 
     void reset() { *this = Portfolio(); }
-    
 };
 #define BK_DEFINE_PORTFOLIO_MEMBER_ACCESSOR(var, type, default_val)                                \
     inline type Portfolio::var(int asset) const {                                                  \
@@ -399,15 +397,26 @@ inline void PortfolioItem::update_value(const ptime &date, double new_price, dou
     prev_adj_price = new_adj_price;
 }
 
+// inline void OHLCData::resize(int assets) {
+//     for (auto &ele : {&open, &high, &low, &close}) {
+//         ele->resize(assets);
+//     }
+// }
+// inline void OHLCData::reset() {
+//     for (auto &ele : {&open, &high, &low, &close}) {
+//         ele->setConstant(0);
+//     }
+// }
+
 inline void OHLCData::resize(int assets) {
-    for (auto &ele : {&open, &high, &low, &close}) {
-        ele->resize(assets);
-    }
+    // `double` 不需要 resize，這裡可以留空或者刪除該函式
 }
+
 inline void OHLCData::reset() {
-    for (auto &ele : {&open, &high, &low, &close}) {
-        ele->setConstant(0);
-    }
+    open = 0.0;
+    high = 0.0;
+    low = 0.0;
+    close = 0.0;
 }
 
 inline PriceFeedData::PriceFeedData(int assets) { valid = VecArrXb::Constant(assets, false); }
@@ -430,35 +439,35 @@ inline void PriceFeedData::validate_assets() {
     valid = (data.open > 0) && (data.high > 0) && (data.low > 0) && (data.close > 0);
 }
 
-#define BK_DEFINE_STRATEGYDATA_OHLC_MEMBER_ACCESSOR(data, var, fun)                                \
-    inline VecArrXd PriceFeedDataBuffer::fun(int time) const {                                     \
-        return data_[window_ + time].data.var;                                                     \
-    };                                                                                             \
-    inline double PriceFeedDataBuffer::fun(int time, int stock) const {                            \
-        return data_[window_ + time].data.var.coeff(stock);                                        \
-    }                                                                                              \
-    inline VecArrXd PriceFeedDataBuffer::fun(Sel s, int stock) const {                             \
-        VecArrXd res(window_);                                                                     \
-        for (int i = 0; i < data_.size(); ++i) {                                                   \
-            res.coeffRef(i) = data_[i].data.var.coeff(stock);                                      \
-        }                                                                                          \
-        return res;                                                                                \
-    }                                                                                              \
-    template <typename Ret> inline Ret PriceFeedDataBuffer::fun(Sel r, Sel c) const {              \
-        Ret res(window_, assets_);                                                                 \
-        for (int i = 0; i < data_.size(); ++i) {                                                   \
-            res.row(i) = data_[i].data.var.transpose();                                            \
-        }                                                                                          \
-        return res;                                                                                \
-    }
-#define BK_DEFINE_STRATEGYDATA_MEMBER_ACCESSOR(type1, type2, var)                                  \
-    inline type1 PriceFeedDataBuffer::var(int time) const { return data_[window_ + time].var; };   \
-    inline type2 PriceFeedDataBuffer::var(int time, int stock) const {                             \
-        return data_[window_ + time].var.coeff(stock);                                             \
-    }
+// #define BK_DEFINE_STRATEGYDATA_OHLC_MEMBER_ACCESSOR(data, var, fun)                                \
+//     inline VecArrXd PriceFeedDataBuffer::fun(int time) const {                                     \
+//         return data_[window_ + time].data.var;                                                     \
+//     };                                                                                             \
+//     inline double PriceFeedDataBuffer::fun(int time, int stock) const {                            \
+//         return data_[window_ + time].data.var.coeff(stock);                                        \
+//     }                                                                                              \
+//     inline VecArrXd PriceFeedDataBuffer::fun(Sel s, int stock) const {                             \
+//         VecArrXd res(window_);                                                                     \
+//         for (int i = 0; i < data_.size(); ++i) {                                                   \
+//             res.coeffRef(i) = data_[i].data.var.coeff(stock);                                      \
+//         }                                                                                          \
+//         return res;                                                                                \
+//     }                                                                                              \
+//     template <typename Ret> inline Ret PriceFeedDataBuffer::fun(Sel r, Sel c) const {              \
+//         Ret res(window_, assets_);                                                                 \
+//         for (int i = 0; i < data_.size(); ++i) {                                                   \
+//             res.row(i) = data_[i].data.var.transpose();                                            \
+//         }                                                                                          \
+//         return res;                                                                                \
+//     }
+// #define BK_DEFINE_STRATEGYDATA_MEMBER_ACCESSOR(type1, type2, var)                                  \
+//     inline type1 PriceFeedDataBuffer::var(int time) const { return data_[window_ + time].var; };   \
+//     inline type2 PriceFeedDataBuffer::var(int time, int stock) const {                             \
+//         return data_[window_ + time].var.coeff(stock);                                             \
+//     }
 
 inline PriceFeedDataBuffer::PriceFeedDataBuffer(int assets, int window)
-    : FeedDataBuffer(window), assets_(assets){};
+    : FeedDataBuffer(window), assets_(assets) {};
 inline backtradercpp::PriceFeedDataBuffer::PriceFeedDataBuffer(const PriceFeedData &data,
                                                                int window)
     : FeedDataBuffer(window), assets_(data.volume.size()) {
@@ -466,22 +475,48 @@ inline backtradercpp::PriceFeedDataBuffer::PriceFeedDataBuffer(const PriceFeedDa
 }
 // const FeedData &PriceFeedDataBuffer::data(int time) const
 
-BK_DEFINE_STRATEGYDATA_OHLC_MEMBER_ACCESSOR(data, open, open);
-BK_DEFINE_STRATEGYDATA_OHLC_MEMBER_ACCESSOR(data, high, high);
-BK_DEFINE_STRATEGYDATA_OHLC_MEMBER_ACCESSOR(data, low, low);
-BK_DEFINE_STRATEGYDATA_OHLC_MEMBER_ACCESSOR(data, close, close);
+// BK_DEFINE_STRATEGYDATA_OHLC_MEMBER_ACCESSOR(data, open, open);
+// BK_DEFINE_STRATEGYDATA_OHLC_MEMBER_ACCESSOR(data, high, high);
+// BK_DEFINE_STRATEGYDATA_OHLC_MEMBER_ACCESSOR(data, low, low);
+// BK_DEFINE_STRATEGYDATA_OHLC_MEMBER_ACCESSOR(data, close, close);
 
-BK_DEFINE_STRATEGYDATA_OHLC_MEMBER_ACCESSOR(adj_data, open, adj_open);
-BK_DEFINE_STRATEGYDATA_OHLC_MEMBER_ACCESSOR(adj_data, high, adj_high);
-BK_DEFINE_STRATEGYDATA_OHLC_MEMBER_ACCESSOR(adj_data, low, adj_low);
-BK_DEFINE_STRATEGYDATA_OHLC_MEMBER_ACCESSOR(adj_data, close, adj_close);
+// BK_DEFINE_STRATEGYDATA_OHLC_MEMBER_ACCESSOR(adj_data, open, adj_open);
+// BK_DEFINE_STRATEGYDATA_OHLC_MEMBER_ACCESSOR(adj_data, high, adj_high);
+// BK_DEFINE_STRATEGYDATA_OHLC_MEMBER_ACCESSOR(adj_data, low, adj_low);
+// BK_DEFINE_STRATEGYDATA_OHLC_MEMBER_ACCESSOR(adj_data, close, adj_close);
 
-BK_DEFINE_STRATEGYDATA_MEMBER_ACCESSOR(VecArrXi, int, volume);
-BK_DEFINE_STRATEGYDATA_MEMBER_ACCESSOR(VecArrXb, bool, valid);
+// BK_DEFINE_STRATEGYDATA_MEMBER_ACCESSOR(VecArrXi, int, volume);
+// BK_DEFINE_STRATEGYDATA_MEMBER_ACCESSOR(VecArrXb, bool, valid);
 
-// template <typename T> void FeedDataBuffer<T>::set_window(int window)
+// // template <typename T> void FeedDataBuffer<T>::set_window(int window)
+// #undef BK_DEFINE_STRATEGYDATA_OHLC_MEMBER_ACCESSOR
+// #undef BK_DEFINE_STRATEGYDATA_MEMBER_ACCESSOR
+
+#define BK_DEFINE_STRATEGYDATA_OHLC_MEMBER_ACCESSOR(data, var, fun)                                \
+    inline double PriceFeedDataBuffer::fun(int time) const {                                       \
+        return data_[window_ + time].data.var;                                                     \
+    }                                                                                              \
+    inline double PriceFeedDataBuffer::fun(int time, int /*stock*/) const {                        \
+        return data_[window_ + time].data.var;                                                     \
+    }                                                                                              \
+    inline VecArrXd PriceFeedDataBuffer::fun(Sel s, int /*stock*/) const {                         \
+        VecArrXd res(window_);                                                                     \
+        for (int i = 0; i < std::min(static_cast<int>(data_.size()), window_); ++i) {              \
+            res.coeffRef(i) = data_[i].data.var;                                                   \
+        }                                                                                          \
+        return res;                                                                                \
+    }                                                                                              \
+    template <typename Ret> inline Ret PriceFeedDataBuffer::fun(Sel r, Sel c) const {              \
+        Ret res(window_, assets_);                                                                 \
+        for (int i = 0; i < std::min(static_cast<int>(data_.size()), window_); ++i) {              \
+            res.row(i).setConstant(data_[i].data.var);                                             \
+        }                                                                                          \
+        return res;                                                                                \
+    }
+
 #undef BK_DEFINE_STRATEGYDATA_OHLC_MEMBER_ACCESSOR
-#undef BK_DEFINE_STRATEGYDATA_MEMBER_ACCESSOR
+
+
 
 inline void Portfolio::transfer_stock(ptime time, int asset, int volume) {
     auto it = portfolio_items.find(asset);

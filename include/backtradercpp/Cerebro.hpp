@@ -14,7 +14,9 @@ enum class VerboseLevel { None, OnlySummary, AllInfo };
 class Cerebro {
   public:
     Cerebro(feeds::PriceData &priceData)
-        : price_feeds_agg_(feeds::PriceFeedAggragator(priceData.sp->get_stock_data())) {}
+        : price_feeds_agg_(priceData.sp->get_stock_data(),
+                           priceData.sp->get_next_index_date_change()),
+          broker_agg_(priceData.sp->get_stock_data()) {}
     // window is for strategy. DataFeed and Broker doesn't store history data.
     void add_broker(broker::BaseBroker broker, int window = 1);
     void add_common_data(feeds::BaseCommonDataFeed data, int window);
@@ -33,23 +35,27 @@ class Cerebro {
     auto broker(int broker);
     auto broker(const std::string &broker_name);
 
-    const std::vector<PriceFeedDataBuffer> &datas() const {
-        static std::vector<PriceFeedDataBuffer> data_buffers;
+    // const std::vector<PriceFeedDataBuffer> &datas() const {
+    //     static std::vector<PriceFeedDataBuffer> data_buffers;
 
-        data_buffers.clear();                       // 確保結果是空的
-        const auto &map = price_feeds_agg_.datas(); // 假設這返回 unordered_map
+    //     data_buffers.clear();                       // 確保結果是空的
+    //     const auto &map = price_feeds_agg_->datas(); // 假設這返回 unordered_map
 
-        // 遍歷 unordered_map 並將其轉換為 PriceFeedDataBuffer
-        for (const auto &pair : map) {
-            for (const auto &price_feed_data : pair.second) {
-                PriceFeedDataBuffer buffer;
-                buffer.load_from_price_feed_data(price_feed_data); // 假設有這樣的函數
-                data_buffers.push_back(buffer);
-            }
-        }
+    //     // 遍歷 unordered_map 並將其轉換為 PriceFeedDataBuffer
+    //     for (const auto &pair : map) {
+    //         for (const auto &price_feed_data : pair.second) {
+    //             PriceFeedDataBuffer buffer;
+    //             buffer.load_from_price_feed_data(price_feed_data); // 假設有這樣的函數
+    //             data_buffers.push_back(buffer);
+    //         }
+    //     }
 
-        return data_buffers;
-    }
+    //     return data_buffers;
+    // }
+
+    // const std::unordered_map<std::string, std::vector<PriceFeedData>> &stock_datas() const {
+    //    return *price_data_impl->get_stock_data();
+    // }
 
     const auto &performance() const { return broker_agg_.performance(); }
 
@@ -57,6 +63,7 @@ class Cerebro {
 
   private:
     // std::vector<int> asset_broker_map_
+    // std::shared_ptr<feeds::PriceDataImpl> price_data_impl; // 變更為 shared_ptr 來指向同一個資料
     feeds::PriceFeedAggragator price_feeds_agg_;
     feeds::CommonFeedAggragator common_feeds_agg_;
 
@@ -66,7 +73,6 @@ class Cerebro {
     ptime start_{boost::posix_time::min_date_time}, end_{boost::posix_time::max_date_time};
 
     VerboseLevel verbose_ = VerboseLevel::OnlySummary;
-
 };
 
 void Cerebro::add_broker(broker::BaseBroker broker, int window) {
@@ -123,6 +129,8 @@ void Cerebro::run() {
 
         // common_feeds_agg_.read();
 
+        bool next_index_date_change = *price_feeds_agg_.get_next_index_date_change();
+
         // 判断是否在指定时间范围内
         if (current_time >= start_) {
             try {
@@ -143,19 +151,23 @@ void Cerebro::run() {
                                boost::posix_time::to_simple_string(previous_time));
                 }
 
-                // 处理旧订单
-                broker_agg_.process_old_orders();
+                // 處理舊訂單
+                // broker_agg_.process_old_orders(price_feeds_agg_.datas());
+                if (next_index_date_change) {
+                    auto order_pool = strategy_->execute();
+                    if (!order_pool.orders.empty()) {
+                        broker_agg_.process(order_pool, price_feeds_agg_.datas());
+                    }
+                    broker_agg_.process_terms();
+                    broker_agg_.update_info();
 
-                auto order_pool = strategy_->execute();
-                broker_agg_.process(order_pool);
-                broker_agg_.process_terms();
-                broker_agg_.update_info();
-
-                if (verbose_ == VerboseLevel::AllInfo) {
-                    fmt::print("cash: {:12.4f},  total_wealth: {:12.2f}\n",
-                               broker_agg_.total_cash(), broker_agg_.total_wealth());
-                    fmt::print("Using {} seconds.\n", util::sw_to_seconds(sw));
+                    if (verbose_ == VerboseLevel::AllInfo) {
+                        fmt::print("cash: {:12.4f},  total_wealth: {:12.2f}\n",
+                                   broker_agg_.total_cash(), broker_agg_.total_wealth());
+                        fmt::print("Using {} seconds.\n", util::sw_to_seconds(sw));
+                    }
                 }
+
             } catch (const std::exception &e) {
                 std::cout << "錯誤: - " << e.what() << '\n';
             }
