@@ -591,7 +591,7 @@ BaseBrokerImpl::process(Order &order,
         // 獲取最新的 PriceFeedData（假設每支股票的數據是按時間排序的）
         PriceFeedData *current_data = &(it->second.back());
 
-        std::cout << "current_data open size: " << current_data->data.open << std::endl;
+        // std::cout << "current_data open size: " << current_data->data.open << std::endl;
 
         auto time = current_data->time; // 使用當前資產的時間
 
@@ -639,9 +639,6 @@ BaseBrokerImpl::process(Order &order,
                 //                  current_data->data.close); // 使用對應的股票數據
                 order.state = OrderState::Success;
                 // std::cout << "Order processed successfully for asset: " << asset << std::endl;
-            } else {
-                std::cout << "Order invalid for asset: " << asset << std::endl;
-                // exit(0);
             }
         } else {
             std::cout << "Order price out of bounds for asset: " << asset << std::endl;
@@ -705,7 +702,7 @@ void BaseBrokerImpl::update_info(int asset) {
             return;
         }
 
-        PriceFeedData* current_data = it->second;
+        PriceFeedData *current_data = it->second;
         if (!current_data) {
             std::cerr << "Error: Null data pointer for asset: " << asset << std::endl;
             return;
@@ -719,24 +716,24 @@ void BaseBrokerImpl::update_info(int asset) {
         std::string time_str;
         try {
             time_str = util::to_string(current_data->time);
-        } catch (const std::exception& e) {
+        } catch (const std::exception &e) {
             std::cerr << "Error converting time to string: " << e.what() << std::endl;
             return;
         }
 
-        log_util_.write_position(std::format("{}, {}, {}, {}, {}, {}, {}",
-                                             time_str, "", "Cash", "", "",
-                                             portfolio_.cash, ""));
+        log_util_.write_position(std::format("{}, {}, {}, {}, {}, {}, {}", time_str, "", "Cash", "",
+                                             "", portfolio_.cash, ""));
         // std::cout << "Portfolio cash: " << portfolio_.cash << std::endl;
 
         // 更新指定资产的持仓信息
         auto item_it = portfolio_.portfolio_items.find(asset);
         if (item_it != portfolio_.portfolio_items.end()) {
-            auto& item = item_it->second;
+            auto &item = item_it->second;
             std::string state = "Valid";
 
             if (current_data->valid.size() > asset && current_data->valid.coeff(asset)) {
-                item.update_value(current_data->time, current_data->data.close, current_data->data.close);
+                item.update_value(current_data->time, current_data->data.close,
+                                  current_data->data.close);
             } else {
                 state = "Invalid";
             }
@@ -746,14 +743,14 @@ void BaseBrokerImpl::update_info(int asset) {
         }
 
         portfolio_.update_info();
-        
+
         analyzer_.update_total_value(portfolio_.total_value);
 
-    } catch (const std::exception& e) {
-        std::cerr << "Exception in update_info for asset " << asset << ": " << e.what() << std::endl;
+    } catch (const std::exception &e) {
+        std::cerr << "Exception in update_info for asset " << asset << ": " << e.what()
+                  << std::endl;
     }
 }
-
 
 inline void BaseBrokerImpl::resize(int n) {}
 
@@ -914,7 +911,7 @@ BrokerAggragator::process(OrderPool &pool,
 
         if (order.state ==
             OrderState::Waiting) { // 如果訂單處於等待狀態，則將其添加到未處理的訂單列表中
-            std::cout << "Order is waiting" << std::endl;
+            // std::cout << "Order is waiting" << std::endl;
             broker.add_order(order);
         }
 
