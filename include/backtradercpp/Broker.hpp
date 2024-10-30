@@ -74,30 +74,32 @@ class BaseBrokerImpl {
     void update_info(int asset);
     const analysis::TotalValueAnalyzer &analyzer() const { return analyzer_; }
 
-    int assets() const {
-        int total_volume_size = 0; // 用於累加所有資產的 volume 大小
+    std::unordered_map<int, int> assets() const { return positions_; }
 
-        // 遍歷 current_map_ 中的所有元素
-        for (const auto &pair : current_map_) {
-            const auto &price_feed_data = pair.second;
+    // int assets() const {
+    //     int total_volume_size = 0; // 用於累加所有資產的 volume 大小
 
-            // 確保 PriceFeedData 不是空指針
-            if (price_feed_data != nullptr) {
-                total_volume_size += price_feed_data->volume.size(); // 累加 volume 的大小
-            } else {
-                throw std::runtime_error("PriceFeedData is null for asset: " + pair.first);
-            }
-        }
+    //     // 遍歷 current_map_ 中的所有元素
+    //     for (const auto &pair : current_map_) {
+    //         const auto &price_feed_data = pair.second;
 
-        return total_volume_size; // 返回總 volume 大小
-    }
+    //         // 確保 PriceFeedData 不是空指針
+    //         if (price_feed_data != nullptr) {
+    //             total_volume_size += price_feed_data->volume.size(); // 累加 volume 的大小
+    //         } else {
+    //             throw std::runtime_error("PriceFeedData is null for asset: " + pair.first);
+    //         }
+    //     }
+
+    //     return total_volume_size; // 返回總 volume 大小
+    // }
 
     auto cash() const { return portfolio_.cash; }
     auto total_value() const { return portfolio_.total_value; }
-    VecArrXi positions(int asset_id) const { return portfolio_.positions(assets()); }
-    VecArrXd values(int asset_id) const { return portfolio_.values(assets()); }
-    VecArrXd profits() const { return portfolio_.profits(assets()); }
-    VecArrXd adj_profits() const { return portfolio_.adj_profits(assets()); }
+    std::unordered_map<int, int> positions() const { return portfolio_.positions(); }
+    VecArrXd values() const { return portfolio_.values(feed_.assets()); }
+    VecArrXd profits() const { return portfolio_.profits(feed_.assets()); }
+    VecArrXd adj_profits() const { return portfolio_.adj_profits(feed_.assets()); }
 
     void set_allow_short(bool flag) { allow_short_ = flag; }
     void set_commission_rate(double long_rate, double short_rate) {
@@ -116,27 +118,7 @@ class BaseBrokerImpl {
         current_map_[asset_id] = data; // 直接通過鍵來更新或插入值
     }
 
-    //     void BaseBrokerImpl::update_current_map(feeds::PriceData data) {
-    //     // 清空 previous data
-    //     current_map_.clear();
-
-    //     // 獲取當前回測日的數據
-    //     feeds::PriceDataImpl* price_data_impl =
-    //     static_cast<feeds::PriceDataImpl*>(data.sp.get()); if (!price_data_impl) {
-    //         throw std::runtime_error("Failed to cast BasePriceDataImpl to PriceDataImpl.");
-    //     }
-
-    //     // 將當日數據存入 current_map_
-    //     for (int i = 0; i < data.assets(); ++i) {
-    //         std::string code = data.codes()[i];
-    //         PriceFeedData* daily_data = price_data_impl->get_data_for_date(current_date, code);
-    //         if (daily_data != nullptr) {
-    //             set_data_ptr(code, daily_data);
-    //         }
-    //     }
-    //     std::cout << "current_map_ updated for current date with size: " << current_map_.size()
-    //     << std::endl;
-    // }
+    inline void update_current_map();
 
     void add_order(const Order &order);
 
@@ -167,7 +149,9 @@ class BaseBrokerImpl {
     std::shared_ptr<GenericTax> tax_;
     // 使用 map 來儲存多檔股票的數據，key 是資產ID或股票代號
     std::unordered_map<std::string, PriceFeedData *> current_map_;
-    std::unordered_map<int, double> positions_; // 記錄每個資產的持倉 (資產ID -> 持倉量)
+    std::unordered_map<int, int> positions_; // 記錄每個資產的持倉 (資產ID -> 持倉量)
+
+    double total_position_value = 0;
 
     // 方法：根據資產ID獲取對應的數據指針
     PriceFeedData *get_price_feed_data(int asset) {
@@ -200,10 +184,15 @@ class BaseBrokerImpl {
                 portfolio_.cash += -order.volume * order.price - order.fee;
             }
 
-            double position_value = positions_[asset] * closing_price;
+            total_position_value = positions_[asset] * closing_price;
+
+            for (const auto &[asset, volume] : positions_) {
+                // 獲取每個資產的收盤價
+                total_position_value += volume * closing_price;
+            }
             std::cout << "Updated position for asset: " << asset
                       << ", New Position: " << positions_[asset]
-                      << ", Position Value: " << position_value << std::endl;
+                      << ", Position Value: " << total_position_value << std::endl;
         } else {
             std::cerr << "No price feed data available for asset: " << asset << std::endl;
         }
@@ -311,18 +300,19 @@ class BaseBroker {
         sp->process_old_orders(datas_);
     }
     void process_terms() { sp->process_trems(); }
+    void update_current_map() { sp->update_current_map(); }
     void update_info(int asset_id) { sp->update_info(asset_id); }
     const analysis::TotalValueAnalyzer &analyzer() const { return sp->analyzer(); }
     void set_log_dir(const std::string &dir, int index);
 
     const auto data_ptr() const { return sp->current_map_; }
 
-    int assets() const { return sp->assets(); }
+    std::unordered_map<int, int> assets() const { return sp->assets(); }
     auto cash() const { return sp->cash(); }
     auto total_value() const { return sp->total_value(); }
 
-    VecArrXi positions(int asset_id) const { return sp->positions(asset_id); }
-    VecArrXd values(int asset_id) const { return sp->values(asset_id); }
+    std::unordered_map<int, int> positions() const { return sp->positions(); }
+    VecArrXd values(int asset_id) const { return sp->values(); }
     VecArrXd profits() const { return sp->profits(); }
     VecArrXd adj_profits() const { return sp->adj_profits(); };
 
@@ -469,6 +459,7 @@ class BrokerAggragator {
                  std::unordered_map<std::string, std::vector<PriceFeedData>> datas_);
     void process_old_orders(std::unordered_map<std::string, std::vector<PriceFeedData>> datas_);
     void process_terms();
+    void update_current_map();
     void update_info(); // Calculate welath daily.
     void set_log_dir(const std::string &dir);
 
@@ -494,8 +485,8 @@ class BrokerAggragator {
 
     const auto &portfolio(int broker) const { return brokers_[broker].portfolio(); }
 
-    int assets(int broker) const { return brokers_[broker].assets(); }
-    int assets(const std::string &broker_name) const {
+    std::unordered_map<int, int> assets(int broker) const { return brokers_[broker].assets(); }
+    std::unordered_map<int, int> assets(const std::string &broker_name) const {
         return brokers_[broker_name_map_.at(broker_name)].assets();
     }
 
@@ -541,8 +532,6 @@ class BrokerAggragator {
 
     // std::vector<VecArrXi> positions_;
     std::vector<std::unordered_map<int, double>> positions_ = {{}};
-
-        
 
     std::vector<VecArrXd> values_, profits_, adj_profits_;
 
@@ -591,7 +580,7 @@ inline void
 BaseBrokerImpl::process(Order &order,
                         std::unordered_map<std::string, std::vector<PriceFeedData>> datas_) {
     int asset = order.asset;
-    std::cout << "Processing order for asset: " << asset << std::endl;
+    // std::cout << "Processing order for asset: " << asset << std::endl;
     try {
         // 使用資產代碼在 datas 中查找對應的數據向量
         auto it = datas_.find(std::to_string(asset));
@@ -613,8 +602,7 @@ BaseBrokerImpl::process(Order &order,
 
         // 生成 PriceEvaluatorInput 以便後續檢查價格範圍
         PriceEvaluatorInput info{current_data->data.open, current_data->data.high,
-                                 current_data->data.low,
-                                 current_data->data.close};
+                                 current_data->data.low, current_data->data.close};
 
         if (order.price_eval) {
             order.price = order.price_eval->price(info);
@@ -646,12 +634,14 @@ BaseBrokerImpl::process(Order &order,
             if (order_valid) {
                 order.processed = true;
                 order.processed_at = time;
-                update_portfolio(order,
-                                 current_data->data.close); // 使用對應的股票數據
+                portfolio_.update(order, current_data->data.close);
+                // update_portfolio(order,
+                //                  current_data->data.close); // 使用對應的股票數據
                 order.state = OrderState::Success;
-                std::cout << "Order processed successfully for asset: " << asset << std::endl;
+                // std::cout << "Order processed successfully for asset: " << asset << std::endl;
             } else {
                 std::cout << "Order invalid for asset: " << asset << std::endl;
+                // exit(0);
             }
         } else {
             std::cout << "Order price out of bounds for asset: " << asset << std::endl;
@@ -680,44 +670,90 @@ inline void BaseBrokerImpl::process_old_orders(
     }
 }
 
-void BaseBrokerImpl::update_info(int asset) {
-    auto it = current_map_.find(std::to_string(asset));
+inline void BaseBrokerImpl::update_current_map() {
+    // 清空 previous data
+    current_map_.clear();
 
-    // 確認資產是否存在於 current_map_ 中
-    if (it == current_map_.end()) {
-        std::cerr << "Error: Asset not found in current_map_" << std::endl;
-        return;
+    // 獲取當前回測日的數據
+    feeds::PriceDataImpl *price_data_impl = static_cast<feeds::PriceDataImpl *>(feed_.sp.get());
+    if (!price_data_impl) {
+        throw std::runtime_error("Failed to cast BasePriceDataImpl to PriceDataImpl.");
     }
-
-    // 使用 ->second 來訪問 PriceFeedData*
-    if (it->second->time == boost::posix_time::not_a_date_time) {
-        std::cerr << "Error: current_->time is not a valid date-time" << std::endl;
-        return;
-    }
-
-    try {
-        std::string time_str = util::to_string(it->second->time); // 使用 ->second 來訪問 time
-    } catch (const std::exception &e) {
-        std::cerr << e.what() << '\n';
-    }
-
-    log_util_.write_position(std::format("{}, {}, {}, {}, {}, {}, {}",
-                                         util::to_string(it->second->time), "", "Cash", "", "",
-                                         portfolio_.cash, ""));
-
-    for (auto &[asset, item] : portfolio_.portfolio_items) {
-        std::string state = "";
-        if (it->second->valid.coeff(asset)) { // 使用 ->second 來訪問 valid
-            item.update_value(it->second->time, it->second->data.close,
-                              it->second->adj_data.close);
-        } else {
-            state = "Invalid";
+    // 取得當日stock data
+    //  將當日數據存入 current_map_
+    for (int i = 0; i < feed_.assets(); ++i) {
+        std::string code = feed_.codes()[i];
+        auto it = price_data_impl->get_stock_data()->find(code);
+        PriceFeedData *daily_data =
+            (it != price_data_impl->get_stock_data()->end() && !it->second.empty())
+                ? &it->second.back()
+                : nullptr;
+        if (daily_data != nullptr) {
+            set_data_ptr(code, daily_data);
         }
     }
-
-    portfolio_.update_info();
-    analyzer_.update_total_value(portfolio_.total_value);
+    // std::cout << "current_map_ updated for current date with size: " << current_map_.size()
+    //           << std::endl;
 }
+
+void BaseBrokerImpl::update_info(int asset) {
+    try {
+
+        auto it = current_map_.find(std::to_string(asset));
+        if (it == current_map_.end()) {
+            std::cerr << "Error: Asset not found in current_map_" << std::endl;
+            return;
+        }
+
+        PriceFeedData* current_data = it->second;
+        if (!current_data) {
+            std::cerr << "Error: Null data pointer for asset: " << asset << std::endl;
+            return;
+        }
+
+        if (current_data->time == boost::posix_time::not_a_date_time) {
+            std::cerr << "Error: Invalid date-time for asset: " << asset << std::endl;
+            return;
+        }
+
+        std::string time_str;
+        try {
+            time_str = util::to_string(current_data->time);
+        } catch (const std::exception& e) {
+            std::cerr << "Error converting time to string: " << e.what() << std::endl;
+            return;
+        }
+
+        log_util_.write_position(std::format("{}, {}, {}, {}, {}, {}, {}",
+                                             time_str, "", "Cash", "", "",
+                                             portfolio_.cash, ""));
+        // std::cout << "Portfolio cash: " << portfolio_.cash << std::endl;
+
+        // 更新指定资产的持仓信息
+        auto item_it = portfolio_.portfolio_items.find(asset);
+        if (item_it != portfolio_.portfolio_items.end()) {
+            auto& item = item_it->second;
+            std::string state = "Valid";
+
+            if (current_data->valid.size() > asset && current_data->valid.coeff(asset)) {
+                item.update_value(current_data->time, current_data->data.close, current_data->data.close);
+            } else {
+                state = "Invalid";
+            }
+
+        } else {
+            std::cerr << "No portfolio item found for asset: " << asset << std::endl;
+        }
+
+        portfolio_.update_info();
+        
+        analyzer_.update_total_value(portfolio_.total_value);
+
+    } catch (const std::exception& e) {
+        std::cerr << "Exception in update_info for asset " << asset << ": " << e.what() << std::endl;
+    }
+}
+
 
 inline void BaseBrokerImpl::resize(int n) {}
 
@@ -901,8 +937,15 @@ inline void BrokerAggragator::process_terms() {
     }
 }
 
+inline void BrokerAggragator::update_current_map() {
+    for (auto &broker : brokers_) {
+        broker.update_current_map();
+    }
+}
+
 inline void BrokerAggragator::update_info() {
     //  update portfolio value for all assets
+    // std::cout << "Updating info for all brokers" << std::endl;
     for (int i = 0; i < brokers_.size(); ++i) {
         auto broker = brokers_[i];
         const auto &data_map = broker.data_ptr(); // 假設 data_ptr() 返回的是一個 std::unordered_map
@@ -919,6 +962,7 @@ inline void BrokerAggragator::update_info() {
                 std::cerr << "Error: data is nullptr for asset ID: " << asset_id << std::endl;
             }
         }
+
         // 更新 portfolio 和利潤
         total_values_.coeffRef(i) = broker.total_value();
         profits_[i] = broker.profits();

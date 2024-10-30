@@ -271,7 +271,7 @@ struct Portfolio {
     int position(int asset) const;
     double profit(int asset) const;
 
-    VecArrXi positions(int total_assets) const;
+    std::unordered_map<int, int> positions() const;
     VecArrXd values(int total_assets) const;
     VecArrXd profits(int total_assets) const;
     VecArrXd adj_profits(int total_assets) const;
@@ -285,6 +285,7 @@ struct Portfolio {
 
     void reset() { *this = Portfolio(); }
 };
+// Portfolio Member Accessor for single variable (like `profit`)
 #define BK_DEFINE_PORTFOLIO_MEMBER_ACCESSOR(var, type, default_val)                                \
     inline type Portfolio::var(int asset) const {                                                  \
         auto it = portfolio_items.find(asset);                                                     \
@@ -294,36 +295,56 @@ struct Portfolio {
             return default_val;                                                                    \
         }                                                                                          \
     }
-BK_DEFINE_PORTFOLIO_MEMBER_ACCESSOR(position, int, 0);
+
+// Define accessor for single `profit`
 BK_DEFINE_PORTFOLIO_MEMBER_ACCESSOR(profit, double, 0);
 #undef BK_DEFINE_PORTFOLIO_MEMBER_ACCESSOR
 
+// Portfolio Member Accessor for vectors (like `profits`)
 #define BK_DEFINE_PORTFOLIO_MEMBER_VEC_ACCESSOR(name, type, default_val)                           \
     inline type Portfolio::name##s(int total_assets) const {                                       \
         type res(total_assets);                                                                    \
         res.setConstant(default_val);                                                              \
         for (const auto &[k, v] : portfolio_items) {                                               \
-            res.coeffRef(k) = v.name;                                                              \
+            if (k < total_assets) {                                                                \
+                res.coeffRef(k) = v.name;                                                          \
+            }                                                                                      \
         }                                                                                          \
         return res;                                                                                \
     }
 
-// #define BK_DEFINE_PORTFOLIO_MEMBER_VEC_ACCESSOR(name, type, default_val) \
-//     inline type Portfolio::name##s(int total_assets) const { \
-//         type res(total_assets); \
-//         res.fill(default_val);  /* 使用 fill 而不是 setConstant 來處理 Eigen 類型 */ \
-//         for (const auto &[k, v] : portfolio_items) { \
-//             res.coeffRef(k) = v.name; \
-//         } \
-//         return res; \
-//     }
-
-BK_DEFINE_PORTFOLIO_MEMBER_VEC_ACCESSOR(position, VecArrXi, 0)
-BK_DEFINE_PORTFOLIO_MEMBER_VEC_ACCESSOR(value, VecArrXd, 0)
-BK_DEFINE_PORTFOLIO_MEMBER_VEC_ACCESSOR(profit, VecArrXd, 0)
-BK_DEFINE_PORTFOLIO_MEMBER_VEC_ACCESSOR(adj_profit, VecArrXd, 0)
-BK_DEFINE_PORTFOLIO_MEMBER_VEC_ACCESSOR(dyn_adj_profit, VecArrXd, 0)
+// Define accessors for vector-based variables like `profits`, `adj_profit`
+BK_DEFINE_PORTFOLIO_MEMBER_VEC_ACCESSOR(value, VecArrXd, 0.0)
+BK_DEFINE_PORTFOLIO_MEMBER_VEC_ACCESSOR(profit, VecArrXd, 0.0)
+BK_DEFINE_PORTFOLIO_MEMBER_VEC_ACCESSOR(adj_profit, VecArrXd, 0.0)
+BK_DEFINE_PORTFOLIO_MEMBER_VEC_ACCESSOR(dyn_adj_profit, VecArrXd, 0.0)
 #undef BK_DEFINE_PORTFOLIO_MEMBER_VEC_ACCESSOR
+
+
+// Single asset access (int or double)
+#define BK_DEFINE_PORTFOLIO_MEMBER_ACCESSOR_V2(var, type, default_val)                                \
+    inline type Portfolio::var(int asset) const {                                                  \
+        auto it = portfolio_items.find(asset);                                                     \
+        if (it != portfolio_items.end()) {                                                         \
+            return it->second.var;                                                                 \
+        } else {                                                                                   \
+            return default_val;                                                                    \
+        }                                                                                          \
+    }
+BK_DEFINE_PORTFOLIO_MEMBER_ACCESSOR_V2(position, int, 0)
+
+// Multi-asset vector access, modified to use unordered_map
+#define BK_DEFINE_PORTFOLIO_MEMBER_ACCESSOR_V2(name, type, default_val)                           \
+    inline std::unordered_map<int, type> Portfolio::name##s() const {                              \
+        std::unordered_map<int, type> res;                                                         \
+        for (const auto &[asset_id, item] : portfolio_items) {                                     \
+            res[asset_id] = item.name;                                                             \
+        }                                                                                          \
+        return res;                                                                                \
+    }
+
+BK_DEFINE_PORTFOLIO_MEMBER_ACCESSOR_V2(position, int, 0)
+#undef BK_DEFINE_PORTFOLIO_MEMBER_ACCESSOR_V2
 
 #define BK_DEFINE_FeedDataBuffer_EXTRA_ACCESSOS(name)                                              \
     template <typename T>                                                                          \
@@ -342,37 +363,42 @@ BK_DEFINE_FeedDataBuffer_EXTRA_ACCESSOS(str);
 #undef BK_DEFINE_FULLASSETDATA_EXTRA_ACCESSOS
 
 inline void Portfolio::update(const Order &order, double adj_price) {
-    int asset = order.asset;
-    auto it = portfolio_items.find(asset);
-    cash -= (order.value + order.fee);
-    if (it != portfolio_items.end()) { // Found
-        auto &item = it->second;
-        // Buy
-        if (order.volume > 0) {
-            item.profit += (order.price - item.prev_price) * item.position;
-            double adj_profit_diff = (adj_price - item.prev_adj_price) * item.position;
-            item.adj_profit += adj_profit_diff;
-            item.dyn_adj_profit += adj_profit_diff;
+    std::cout << "Updating portfolio for order: " << order.asset << std::endl;
+    try {
+        int asset = order.asset;
+        auto it = portfolio_items.find(asset);
+        cash -= (order.value + order.fee);
+        if (it != portfolio_items.end()) { // Found
+            auto &item = it->second;
+            // Buy
+            if (order.volume > 0) {
+                item.profit += (order.price - item.prev_price) * item.position;
+                double adj_profit_diff = (adj_price - item.prev_adj_price) * item.position;
+                item.adj_profit += adj_profit_diff;
+                item.dyn_adj_profit += adj_profit_diff;
+            } else {
+                double cash_diff =
+                    (item.dyn_adj_profit - item.profit) * ((-order.volume) / item.position);
+                cash += cash_diff;
+                item.dyn_adj_profit -= cash_diff;
+            }
+            item.position += order.volume;
+            item.value += order.value;
+            if (item.position == 0) {
+                portfolio_items.erase(it);
+            }
         } else {
-            double cash_diff =
-                (item.dyn_adj_profit - item.profit) * ((-order.volume) / item.position);
-            cash += cash_diff;
-            item.dyn_adj_profit -= cash_diff;
+            portfolio_items[asset] = {.position = order.volume,
+                                      .prev_price = order.price,
+                                      .prev_adj_price = adj_price,
+                                      .buying_time = order.processed_at,
+                                      .value = order.value,
+                                      .profit = -order.fee,
+                                      .dyn_adj_profit = -order.fee,
+                                      .adj_profit = -order.fee};
         }
-        item.position += order.volume;
-        item.value += order.value;
-        if (item.position == 0) {
-            portfolio_items.erase(it);
-        }
-    } else {
-        portfolio_items[asset] = {.position = order.volume,
-                                  .prev_price = order.price,
-                                  .prev_adj_price = adj_price,
-                                  .buying_time = order.processed_at,
-                                  .value = order.value,
-                                  .profit = -order.fee,
-                                  .dyn_adj_profit = -order.fee,
-                                  .adj_profit = -order.fee};
+    } catch (const std::exception &e) {
+        std::cerr << e.what() << std::endl;
     }
 }
 
@@ -515,8 +541,6 @@ inline backtradercpp::PriceFeedDataBuffer::PriceFeedDataBuffer(const PriceFeedDa
     }
 
 #undef BK_DEFINE_STRATEGYDATA_OHLC_MEMBER_ACCESSOR
-
-
 
 inline void Portfolio::transfer_stock(ptime time, int asset, int volume) {
     auto it = portfolio_items.find(asset);

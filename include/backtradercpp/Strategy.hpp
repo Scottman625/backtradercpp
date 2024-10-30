@@ -285,8 +285,8 @@ class GenericStrategy {
     virtual void run() = 0;
     virtual void reset() { time_index_ = -1; }
 
-    int assets(int broker) const { return broker_agg_->assets(broker); }
-    int assets(const std::string &broker_name) const { return broker_agg_->assets(broker_name); }
+    std::unordered_map<int, int> assets(int broker) const { return broker_agg_->assets(broker); }
+    std::unordered_map<int, int> assets(const std::string &broker_name) const { return broker_agg_->assets(broker_name); }
 
     double wealth(int broker) const { return broker_agg_->wealth(broker); }
     double cash(int broker) const { return broker_agg_->cash(broker); };
@@ -435,8 +435,8 @@ const Order &GenericStrategy::buy(int broker_id, int asset, double price, int vo
         .valid_until = time() + til_start_d + til_start_t + start_to_end_d + start_to_end_t,
     }; // 設置 time_index
 
-    std::cout << "buy stock " << asset << " with price " << price << " at time_index " << time_index
-              << std::endl;
+    // std::cout << "buy stock " << asset << " with price " << price << " at time_index " << time_index
+    //           << std::endl;
     order_pool_.orders.emplace_back(std::move(order));
     return order_pool_.orders.back();
 }

@@ -112,6 +112,7 @@ void Cerebro::run() {
                boost::posix_time::to_simple_string(previous_time));
 
     while (!price_feeds_agg_.finished()) {
+        // std::cout << "price_feeds_agg_.finished() is false" << std::endl;
         spdlog::stopwatch sw; // 用于记录时间
         if (price_feeds_agg_.time() > end_) {
             fmt::print("End of the range.\n");
@@ -151,7 +152,7 @@ void Cerebro::run() {
                                boost::posix_time::to_simple_string(previous_time));
                 }
 
-                // 處理舊訂單
+                broker_agg_.update_current_map();
                 // broker_agg_.process_old_orders(price_feeds_agg_.datas());
                 if (next_index_date_change) {
                     auto order_pool = strategy_->execute();
@@ -162,8 +163,10 @@ void Cerebro::run() {
                     broker_agg_.update_info();
 
                     if (verbose_ == VerboseLevel::AllInfo) {
-                        fmt::print("cash: {:12.4f},  total_wealth: {:12.2f}\n",
-                                   broker_agg_.total_cash(), broker_agg_.total_wealth());
+                        std::cout << "cash: " << broker_agg_.cash(0) << ",  total_wealth: "
+                                  << broker_agg_.total_wealth() << std::endl;
+                        // fmt::print("cash: {:12.4f},  total_wealth: {:12.2f}\n",
+                        //            broker_agg_.total_cash(), broker_agg_.total_wealth());
                         fmt::print("Using {} seconds.\n", util::sw_to_seconds(sw));
                     }
                 }

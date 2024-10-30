@@ -88,7 +88,8 @@ void setConsoleUtf8() {
 }
 
 void runBacktrader(const std::vector<std::vector<std::string>> &data,
-                   const std::vector<std::string> &columns) {
+                   const std::vector<std::string> &columns,
+                   const int assets) {
     SetConsoleOutputCP(CP_UTF8);
 
     try {
@@ -97,7 +98,7 @@ void runBacktrader(const std::vector<std::vector<std::string>> &data,
 
         // Initialize PriceData with the new parameter
         std::shared_ptr<feeds::PriceData> priceData = std::make_shared<feeds::PriceData>(
-            data, columns, next_index_date_change, feeds::TimeStrConv::delimited_date);
+            data, columns,assets, next_index_date_change, feeds::TimeStrConv::delimited_date);
         
         std::cout << "PriceData initialized" << std::endl;
         
@@ -117,7 +118,7 @@ void runBacktrader(const std::vector<std::vector<std::string>> &data,
 }
 
 
-void runAll(const std::vector<DataFrame> &data_list) {
+void runAll(const std::vector<DataFrame> &data_list, const int assets) {
     auto start = std::chrono::high_resolution_clock::now();
     std::cout << "Running runAll" << std::endl;
 
@@ -144,7 +145,7 @@ void runAll(const std::vector<DataFrame> &data_list) {
 
     try {
         // 运行 backtrader，只执行一次
-        runBacktrader(merged_data, merged_columns);
+        runBacktrader(merged_data, merged_columns, assets);
     } catch (const std::exception &e) {
         std::cerr << "Error in running backtrader: " << e.what() << std::endl;
     }
@@ -154,74 +155,6 @@ void runAll(const std::vector<DataFrame> &data_list) {
     std::cout << "C++ code elapsed time : " << elapsed.count() << " seconds.\n";
 }
 
-// void runAll(const std::vector<CustomObject>& data_list) {
-//     auto start = std::chrono::high_resolution_clock::now();
-//     std::vector<std::thread> threads;
-//     std::cout << "Running runAll" << std::endl;
-
-//     // Ensure GIL is acquired in this thread to convert Python objects to C++ objects
-//     py::gil_scoped_acquire acquire;
-
-//     for (const auto& data : data_list) {
-//         try {
-//             // Convert py::array_t<double> to std::vector<std::vector<double>>
-//             py::buffer_info buf = data.array.request();
-//             std::vector<std::vector<double>> ohlc_data(buf.shape[0],
-//             std::vector<double>(buf.shape[1])); double* ptr = static_cast<double*>(buf.ptr); for
-//             (size_t i = 0; i < buf.shape[0]; ++i) {
-//                 for (size_t j = 0; j < buf.shape[1]; ++j) {
-//                     ohlc_data[i][j] = ptr[i * buf.shape[1] + j];
-//                 }
-//             }
-//             DataObject mydata = {ohlc_data, data.vec1, data.vec2, data.vec3};
-
-//             // Create a new thread to runBacktrader with C++ objects
-//             threads.emplace_back([mydata]() {
-//                 try {
-//                     // std::cout << "Starting thread for stock code: " << mydata.stock_vector[0]
-//                     << std::endl; runBacktrader(mydata.ohlc_data, mydata.date_vector,
-//                     mydata.stock_name_vector, mydata.stock_vector);
-//                     // std::cout << "Finished thread for stock code: " << mydata.stock_vector[0]
-//                     << std::endl;
-//                 } catch (const std::exception &e) {
-//                     std::cerr << "Thread error: " << e.what() << std::endl;
-//                 }
-//             });
-//         } catch (const std::exception &e) {
-//             std::cerr << "Error in converting data: " << e.what() << std::endl;
-//         }
-//     }
-
-//     for (auto& t : threads) {
-//         if (t.joinable()) {
-//             t.join();
-//         }
-//     }
-
-//     auto end = std::chrono::high_resolution_clock::now();
-//     std::chrono::duration<double> elapsed = end - start;
-//     std::cout << "C++ code elapsed time : " << elapsed.count() << " seconds.\n";
-// }
-
-// void checkCoreUsage() {
-// #ifdef _WIN32
-//     DWORD_PTR processAffinityMask;
-//     DWORD_PTR systemAffinityMask;
-//     if (GetProcessAffinityMask(GetCurrentProcess(), &processAffinityMask, &systemAffinityMask)) {
-//         // Do something with the masks
-//     } else {
-//         std::cerr << "Failed to get process affinity mask (" << GetLastError() << ").\n";
-//     }
-// #else
-//     // Unix-like systems may use sysconf or other methods to get CPU info
-//     long nprocs = sysconf(_SC_NPROCESSORS_ONLN);
-//     if (nprocs == -1) {
-//         perror("sysconf");
-//     } else {
-//         std::cout << "Number of processors: " << nprocs << std::endl;
-//     }
-// #endif
-// }
 
 PYBIND11_MODULE(backtradercpp, m) {
 
@@ -230,8 +163,9 @@ PYBIND11_MODULE(backtradercpp, m) {
         .def_readwrite("data", &DataFrame::data)
         .def_readwrite("columns", &DataFrame::columns);
 
-    m.def("runBacktrader", &runBacktrader, "Run the backtrader strategy", py::arg("data"),
-          py::arg("columns"));
-    m.def("runAll", &runAll, "Process a list of CustomObject");
-    // m.def("checkCoreUsage", &checkCoreUsage, "Check the number of cores being used");
+    m.def("runBacktrader", &runBacktrader, "Run the backtrader strategy",
+      py::arg("data"), py::arg("columns"), py::arg("assets"));
+
+    m.def("runAll", &runAll, "Process a list of CustomObject", py::arg("data_list"), py::arg("assets"));
+
 }

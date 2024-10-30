@@ -208,9 +208,10 @@ class PriceDataImpl : public BasePriceDataImpl {
     PriceDataImpl() { std::cout << "PriceDataImpl constructed" << std::endl; };
     PriceDataImpl(const std::vector<std::vector<std::string>> &data,
                   const std::vector<std::string> &columns,
+                  const int assets,
                   std::shared_ptr<bool> next_index_date_change_,
                   TimeStrConv::func_type time_converter = nullptr)
-        : data_(data), columns_(columns), next_index_date_change_(next_index_date_change_),
+        : data_(data), columns_(columns), assets_(assets), next_index_date_change_(next_index_date_change_),
           BasePriceDataImpl(time_converter),
           stock_data(
               std::make_shared<std::unordered_map<std::string, std::vector<PriceFeedData>>>()) {
@@ -390,19 +391,19 @@ void PriceDataImpl::init() {
     size_t cols = data_[0].size();
 
     // 将 assets_ 设置为股票的数量（即行数）
-    assets_ = rows;
+    // assets_ = rows;
 
     std::cout << "assets_: " << assets_ << std::endl;
 
     // 正确初始化 codes_，确保每个股票都有唯一的代码
-    codes_.resize(rows);
-    for (size_t i = 0; i < rows; ++i) {
+    codes_.resize(assets_);
+    for (size_t i = 0; i < assets_; ++i) {
         // 假设股票代码位于每行的某个位置，例如第 1 列
         codes_[i] = data_[i][0]; // 假设股票代码是每行的第 0 列（可以根据实际数据调整列索引）
     }
 
     // Initialize combined_data_ with additional columns for date, stock name, and stock
-    next_.resize(rows);
+    // next_.resize(assets_);
 }
 
 class BaseCommonDataFeedImpl : public GenericDataImpl<CommonFeedData> {
@@ -575,6 +576,8 @@ class BasePriceDataFeed {
 
     const auto &codes() const { return sp->codes(); }
 
+    const auto &assets() const { return sp->assets(); }
+
     const auto &time() const { return sp->data().time; }
 
     const auto &name() const { return sp->name(); }
@@ -662,9 +665,10 @@ class PriceData : public BasePriceDataFeed {
     PriceData() : BasePriceDataFeed(std::make_shared<PriceDataImpl>()) {}
     PriceData(const std::vector<std::vector<std::string>> &data,
               const std::vector<std::string> &columns,
+              const int &assets,
               std::shared_ptr<bool> next_index_date_change_,
               TimeStrConv::func_type time_converter = nullptr)
-        : BasePriceDataFeed(std::make_shared<PriceDataImpl>(data, columns, next_index_date_change_,
+        : BasePriceDataFeed(std::make_shared<PriceDataImpl>(data, columns,assets, next_index_date_change_,
                                                             time_converter)) {}
 
     PriceData &set_name(const std::string &name) {
