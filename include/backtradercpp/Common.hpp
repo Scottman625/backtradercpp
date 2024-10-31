@@ -363,20 +363,25 @@ BK_DEFINE_FeedDataBuffer_EXTRA_ACCESSOS(str);
 #undef BK_DEFINE_FULLASSETDATA_EXTRA_ACCESSOS
 
 inline void Portfolio::update(const Order &order, double adj_price) {
-    std::cout << "Updating portfolio for order: " << order.asset << std::endl;
+    // std::cout << "Updating portfolio for order: " << order.asset << std::endl;
     try {
         int asset = order.asset;
         auto it = portfolio_items.find(asset);
+        // std::cout << "order value: " << order.value << std::endl;   
         cash -= (order.value + order.fee);
+        // std::cout << "Cash: " << cash << std::endl;
         if (it != portfolio_items.end()) { // Found
+        std::cout << "Found" << std::endl;
             auto &item = it->second;
             // Buy
             if (order.volume > 0) {
+                std::cout << "Buying" << std::endl;
                 item.profit += (order.price - item.prev_price) * item.position;
                 double adj_profit_diff = (adj_price - item.prev_adj_price) * item.position;
                 item.adj_profit += adj_profit_diff;
                 item.dyn_adj_profit += adj_profit_diff;
             } else {
+                std::cout << "Selling" << std::endl;
                 double cash_diff =
                     (item.dyn_adj_profit - item.profit) * ((-order.volume) / item.position);
                 cash += cash_diff;
@@ -388,6 +393,7 @@ inline void Portfolio::update(const Order &order, double adj_price) {
                 portfolio_items.erase(it);
             }
         } else {
+            std::cout << "Not found" << std::endl;
             portfolio_items[asset] = {.position = order.volume,
                                       .prev_price = order.price,
                                       .prev_adj_price = adj_price,
@@ -398,7 +404,8 @@ inline void Portfolio::update(const Order &order, double adj_price) {
                                       .adj_profit = -order.fee};
         }
     } catch (const std::exception &e) {
-        std::cerr << e.what() << std::endl;
+        std::cout << "Exception in update for order: " << order.asset << ": " << e.what()
+                  << std::endl;
     }
 }
 

@@ -153,7 +153,7 @@ void Cerebro::run() {
                 }
 
                 broker_agg_.update_current_map();
-                // broker_agg_.process_old_orders(price_feeds_agg_.datas());
+                broker_agg_.process_old_orders(price_feeds_agg_.datas());
                 if (next_index_date_change) {
                     auto order_pool = strategy_->execute();
                     if (!order_pool.orders.empty()) {
@@ -163,8 +163,8 @@ void Cerebro::run() {
                     broker_agg_.update_info();
 
                     if (verbose_ == VerboseLevel::AllInfo) {
-                        std::cout << "cash: " << broker_agg_.cash(0) << ",  total_wealth: "
-                                  << broker_agg_.total_wealth() << std::endl;
+                        // std::cout << "cash: " << broker_agg_.cash(0) << ",  total_wealth: "
+                        //           << broker_agg_.total_wealth() << std::endl;
                         // fmt::print("cash: {:12.4f},  total_wealth: {:12.2f}\n",
                         //            broker_agg_.total_cash(), broker_agg_.total_wealth());
                         fmt::print("Using {} seconds.\n", util::sw_to_seconds(sw));

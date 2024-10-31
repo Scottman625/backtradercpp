@@ -162,23 +162,6 @@ class GenericStrategy {
 
         return keys; // 返回鍵的向量
     }
-    // const auto &common_data(int broker_id) const {
-    //     const auto& map = common_datas();  // 獲取 unordered_map
-    //     const auto& keys = get_keys();     // 假設這是一個存有鍵的向量
-
-    //     if (broker_id < 0 || broker_id >= keys.size()) {
-    //         throw std::out_of_range("Broker ID out of range");
-    //     }
-
-    //     std::string key = keys[broker_id];  // 根據 broker_id 獲取對應的字符串鍵
-    //     auto it = map.find(key);            // 查找對應的鍵
-
-    //     if (it == map.end()) {
-    //         throw std::runtime_error("Key not found in common_datas()");
-    //     }
-
-    //     return it->second;  // 返回對應的 vector<CommonFeedData>
-    // }
 
     bool data_valid(int feed) const { return price_feed_agg_->data_valid(feed); }
 
@@ -195,8 +178,8 @@ class GenericStrategy {
                      int time_index, date_duration til_start_d = days(0),
                      time_duration til_start_t = hours(0), date_duration start_to_end_d = days(0),
                      time_duration start_to_end_t = hours(23)) {
-        std::cout << "buy stock" << asset << " with price " << price << std::endl;
-        return buy(broker_id(broker_name), asset, price, volume, time_index, til_start_d,
+        // std::cout << "buy stock" << asset << " with price " << price << std::endl;
+         buy(broker_id(broker_name), asset, price, volume, time_index, til_start_d,
                    til_start_t, start_to_end_d, start_to_end_t);
     }
     const Order &buy(int broker_id, int asset, std::shared_ptr<GenericPriceEvaluator> price_eval,
@@ -244,8 +227,8 @@ class GenericStrategy {
 
     const Order &close(int broker_id, int asset, double price, int time_index);
     const Order &close(const std::string &broker_name, int asset, double price, int time_index) {
-        std::cout << "close stock" << asset << " with price " << price << std::endl;
-        return close(broker_id(broker_name), asset, price, time_index);
+        // std::cout << "close stock" << asset << " with price " << price << std::endl;
+         close(broker_id(broker_name), asset, price, time_index);
     }
     const Order &close(int broker_id, int asset, std::shared_ptr<GenericPriceEvaluator> price_eval,
                        int time_index);
@@ -264,8 +247,8 @@ class GenericStrategy {
         adjust_to_weight_target(broker_id(broker_name), w, p, TOTAL_FRACTION);
     };
 
-    void adjust_to_volume_target(int broker_id, const VecArrXi &target_volume,
-                                 const double &p = 0, double TOTAL_FRACTION = 0.99);
+    void adjust_to_volume_target(int broker_id, const VecArrXi &target_volume, const double &p = 0,
+                                 double TOTAL_FRACTION = 0.99);
     void adjust_to_volume_target(const std::string &broker_name, const VecArrXi &target_volume,
                                  const double &p = 0, double TOTAL_FRACTION = 0.99) {
         adjust_to_volume_target(broker_id(broker_name), target_volume, p, TOTAL_FRACTION);
@@ -279,6 +262,7 @@ class GenericStrategy {
     const auto &execute() {
         pre_execute();
         run();
+        // std::cout << "order_pool_ size: " << order_pool_.orders.size() << std::endl;
         return order_pool_;
     }
 
@@ -286,12 +270,14 @@ class GenericStrategy {
     virtual void reset() { time_index_ = -1; }
 
     std::unordered_map<int, int> assets(int broker) const { return broker_agg_->assets(broker); }
-    std::unordered_map<int, int> assets(const std::string &broker_name) const { return broker_agg_->assets(broker_name); }
+    std::unordered_map<int, int> assets(const std::string &broker_name) const {
+        return broker_agg_->assets(broker_name);
+    }
 
     double wealth(int broker) const { return broker_agg_->wealth(broker); }
     double cash(int broker) const { return broker_agg_->cash(broker); };
 
-    const std::unordered_map<int, double> &positions(int broker) const;
+    const std::unordered_map<int, int> &positions(int broker) const;
     double position(int broker, int asset) const;
 
     const VecArrXd &values(int broker) const;
@@ -402,18 +388,27 @@ BK_STRATEGY_PORTFOLIO_MEMBER_ACESSOR(profit, double, VecArrXd)
 BK_STRATEGY_PORTFOLIO_MEMBER_ACESSOR(adj_profit, double, VecArrXd)
 #undef BK_STRATEGY_PORTFOLIO_MEMBER_ACESSOR
 
-#define BK_STRATEGY_PORTFOLIO_MEMBER_ACCESSOR_V2(name, type)                                       \
-    inline const std::unordered_map<int, double> &GenericStrategy::name##s(int broker) const {     \
-        return broker_agg_->name##s(broker);                                                       \
-    }                                                                                              \
+// 單個資產的獲取
+#define BK_STRATEGY_PORTFOLIO_MEMBER_ACCESSOR_SINGLE(name, type)                                   \
     inline type GenericStrategy::name(int broker, int asset) const {                               \
         const auto &map = broker_agg_->name##s(broker);                                            \
         auto it = map.find(asset);                                                                 \
         return it != map.end() ? it->second : 0;                                                   \
     }
 
-BK_STRATEGY_PORTFOLIO_MEMBER_ACCESSOR_V2(position, double)
-#undef BK_STRATEGY_PORTFOLIO_MEMBER_ACCESSOR_V2
+// 獲取整個資產集合的映射
+#define BK_STRATEGY_PORTFOLIO_MEMBER_ACCESSOR_MAP(name, type)                                      \
+    inline const std::unordered_map<int, type> &GenericStrategy::name##s(int broker) const {       \
+        return broker_agg_->name##s(broker);                                                       \
+    }
+
+// 使用宏創建 position 獲取函數
+BK_STRATEGY_PORTFOLIO_MEMBER_ACCESSOR_SINGLE(position, double)
+BK_STRATEGY_PORTFOLIO_MEMBER_ACCESSOR_MAP(position, int)
+
+// 移除宏定義
+#undef BK_STRATEGY_PORTFOLIO_MEMBER_ACCESSOR_SINGLE
+#undef BK_STRATEGY_PORTFOLIO_MEMBER_ACCESSOR_MAP
 
 const auto &GenericStrategy::portfolio(int broker) const { return broker_agg_->portfolio(broker); }
 
@@ -435,8 +430,8 @@ const Order &GenericStrategy::buy(int broker_id, int asset, double price, int vo
         .valid_until = time() + til_start_d + til_start_t + start_to_end_d + start_to_end_t,
     }; // 設置 time_index
 
-    // std::cout << "buy stock " << asset << " with price " << price << " at time_index " << time_index
-    //           << std::endl;
+    // std::cout << "buy stock " << asset << " with price " << price << " and volume "<< volume<< std::endl;
+    
     order_pool_.orders.emplace_back(std::move(order));
     return order_pool_.orders.back();
 }
@@ -476,20 +471,21 @@ const Order &GenericStrategy::delayed_buy(int broker_id, int asset,
 }
 
 inline const Order &GenericStrategy::close(int broker_id, int asset, double price, int time_index) {
-    std::cout << "close stock " << asset << " with price " << price << std::endl;
-    double volume = -(broker_agg_->position(broker_id, asset));
-    std::cout << "sell volume: " << volume << std::endl;
-    std::cout << "time_index: " << time_index << std::endl;
+    // std::cout << "close stock " << asset << " with price " << price << std::endl;
+    int volume = -(broker_agg_->position(broker_id, asset));
+    // std::cout << "sell volume: " << volume << std::endl;
+    // std::cout << "time_index: " << time_index << std::endl;
     return delayed_buy(broker_id, asset, price, volume, time_index);
 }
 
 inline const backtradercpp::Order &backtradercpp::strategy::GenericStrategy::close(
     int broker_id, int asset, std::shared_ptr<GenericPriceEvaluator> price_eval, int time_index) {
-    return delayed_buy(broker_id, asset, price_eval, -position(broker_id, asset), time_index);
+    return delayed_buy(broker_id, asset, price_eval, -(broker_agg_->position(broker_id, asset)), time_index);
 }
 
 // template <int UNIT>
-// void GenericStrategy::adjust_to_weight_target(int broker_id, const VecArrXd &w, const VecArrXd &p,
+// void GenericStrategy::adjust_to_weight_target(int broker_id, const VecArrXd &w, const VecArrXd
+// &p,
 //                                               double TOTAL_FRACTION) {
 //     // 假設我們需要處理多檔股票，遍歷所有的資產（股票代號）
 //     for (const auto &price_feed_data : data(std::to_string(broker_id))) {
@@ -534,7 +530,8 @@ void GenericStrategy::adjust_to_volume_target(int broker_id, const VecArrXi &tar
 
         // 獲取當前持倉
         auto position_it = positions(broker_id).find(stoi(price_feed_data.ticker_));
-        int current_position = (position_it != positions(broker_id).end()) ? position_it->second : 0;
+        int current_position =
+            (position_it != positions(broker_id).end()) ? position_it->second : 0;
 
         // 計算持倉差異
         VecArrXi volume_diff = target_volume - current_position;
@@ -549,7 +546,6 @@ void GenericStrategy::adjust_to_volume_target(int broker_id, const VecArrXi &tar
         }
     }
 }
-
 
 } // namespace strategy
 } // namespace backtradercpp

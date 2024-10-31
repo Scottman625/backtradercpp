@@ -30,14 +30,14 @@ struct SimpleStrategy : strategy::GenericStrategy {
                 for (const auto &stock : datas()) {
                     const std::string &ticker = stock.first; // 股票代號
                     const std::vector<PriceFeedData> &data_vector = stock.second;
-                    std::cout << "ticker: " << ticker << std::endl;
+                    // std::cout << "ticker: " << ticker << std::endl;
                     // 確保有最新數據並操作資產
                     if (!data_vector.empty()) {
                         const PriceFeedData &latest_data =
                             data_vector.back(); // 取最後一個元素，即最新的數據
                         // for (int j = 0; j < latest_data.data.open.size(); ++j) {
-                        std::cout << "ticker: " << ticker
-                                  << "open price: " << latest_data.data.open << std::endl;
+                        // std::cout << "ticker: " << ticker
+                        //           << "open price: " << latest_data.data.open << std::endl;
                         buy(0, stoi(ticker), latest_data.data.open, 100, time_index());
                     }
                 }
@@ -48,19 +48,26 @@ struct SimpleStrategy : strategy::GenericStrategy {
         }
 
         // 每 100 個時間步長的第 40 個時間步執行一次賣出操作
-        if (time_index() % 50 == 10) {
+        if (time_index() % 50 == 40) {
             std::cout << "time_index: " << time_index() << std::endl;
-            for (const auto &stock : datas()) {
-                const std::string &ticker = stock.first;
-                const std::vector<PriceFeedData> &data_vector = stock.second;
-                std::cout << "ticker: " << ticker << std::endl;
-                if (!data_vector.empty()) {
-                    const PriceFeedData &latest_data =
-                        data_vector.back(); // 取最後一個元素，即最新的數據
-                    std::cout << "ticker: " << ticker
-                              << " close price: " << latest_data.data.close << std::endl;
-                    close(0, stoi(ticker), latest_data.data.close, time_index());
+
+            try {
+
+                for (const auto &stock : datas()) {
+                    const std::string &ticker = stock.first;
+                    const std::vector<PriceFeedData> &data_vector = stock.second;
+                    // std::cout << "ticker: " << ticker << std::endl;
+                    if (!data_vector.empty()) {
+                        const PriceFeedData &latest_data =
+                            data_vector.back(); // 取最後一個元素，即最新的數據
+                        // std::cout << "ticker: " << ticker
+                        //           << " close price: " << latest_data.data.close << std::endl;
+                        close(0, stoi(ticker), latest_data.data.close, time_index());
+                    }
                 }
+            } catch (const std::exception &e) {
+                std::cout << "Error: " << std::endl;
+                std::cerr << e.what() << '\n';
             }
         }
     }
@@ -88,35 +95,33 @@ void setConsoleUtf8() {
 }
 
 void runBacktrader(const std::vector<std::vector<std::string>> &data,
-                   const std::vector<std::string> &columns,
-                   const int assets) {
+                   const std::vector<std::string> &columns, const int assets) {
     SetConsoleOutputCP(CP_UTF8);
 
     try {
         // Initialize next_index_date_change shared pointer
-        auto next_index_date_change = std::make_shared<bool>(false); 
+        auto next_index_date_change = std::make_shared<bool>(false);
 
         // Initialize PriceData with the new parameter
         std::shared_ptr<feeds::PriceData> priceData = std::make_shared<feeds::PriceData>(
-            data, columns,assets, next_index_date_change, feeds::TimeStrConv::delimited_date);
-        
+            data, columns, assets, next_index_date_change, feeds::TimeStrConv::delimited_date);
+
         std::cout << "PriceData initialized" << std::endl;
-        
+
         Cerebro cerebro(*priceData);
         std::cout << "Adding broker..." << std::endl;
-        
+
         cerebro.add_broker(broker::BaseBroker(5000000, 0.0005, 0.001).set_feed(*priceData));
         std::cout << "Adding strategy..." << std::endl;
-        
+
         cerebro.add_strategy(std::make_shared<SimpleStrategy>());
         std::cout << "Running strategy..." << std::endl;
-        
+
         cerebro.run();
     } catch (const std::exception &e) {
         std::cerr << "Error: " << e.what() << std::endl;
     }
 }
-
 
 void runAll(const std::vector<DataFrame> &data_list, const int assets) {
     auto start = std::chrono::high_resolution_clock::now();
@@ -155,7 +160,6 @@ void runAll(const std::vector<DataFrame> &data_list, const int assets) {
     std::cout << "C++ code elapsed time : " << elapsed.count() << " seconds.\n";
 }
 
-
 PYBIND11_MODULE(backtradercpp, m) {
 
     py::class_<DataFrame>(m, "DataFrame")
@@ -163,9 +167,9 @@ PYBIND11_MODULE(backtradercpp, m) {
         .def_readwrite("data", &DataFrame::data)
         .def_readwrite("columns", &DataFrame::columns);
 
-    m.def("runBacktrader", &runBacktrader, "Run the backtrader strategy",
-      py::arg("data"), py::arg("columns"), py::arg("assets"));
+    m.def("runBacktrader", &runBacktrader, "Run the backtrader strategy", py::arg("data"),
+          py::arg("columns"), py::arg("assets"));
 
-    m.def("runAll", &runAll, "Process a list of CustomObject", py::arg("data_list"), py::arg("assets"));
-
+    m.def("runAll", &runAll, "Process a list of CustomObject", py::arg("data_list"),
+          py::arg("assets"));
 }
