@@ -13,6 +13,10 @@ namespace backtradercpp {
 enum class VerboseLevel { None, OnlySummary, AllInfo };
 class Cerebro {
   public:
+    Cerebro(feeds::PriceData &priceData)
+        : price_feeds_agg_(priceData.sp->get_stock_data(),
+                           priceData.sp->get_next_index_date_change()),
+          broker_agg_(priceData.sp->get_stock_data()) {}
     // window is for strategy. DataFeed and Broker doesn't store history data.
     void add_broker(broker::BaseBroker broker, int window = 1);
     void add_common_data(feeds::BaseCommonDataFeed data, int window);
@@ -31,7 +35,27 @@ class Cerebro {
     auto broker(int broker);
     auto broker(const std::string &broker_name);
 
-    const std::vector<PriceFeedDataBuffer> &datas() const { return price_feeds_agg_.datas(); }
+    // const std::vector<PriceFeedDataBuffer> &datas() const {
+    //     static std::vector<PriceFeedDataBuffer> data_buffers;
+
+    //     data_buffers.clear();                       // 確保結果是空的
+    //     const auto &map = price_feeds_agg_->datas(); // 假設這返回 unordered_map
+
+    //     // 遍歷 unordered_map 並將其轉換為 PriceFeedDataBuffer
+    //     for (const auto &pair : map) {
+    //         for (const auto &price_feed_data : pair.second) {
+    //             PriceFeedDataBuffer buffer;
+    //             buffer.load_from_price_feed_data(price_feed_data); // 假設有這樣的函數
+    //             data_buffers.push_back(buffer);
+    //         }
+    //     }
+
+    //     return data_buffers;
+    // }
+
+    // const std::unordered_map<std::string, std::vector<PriceFeedData>> &stock_datas() const {
+    //    return *price_data_impl->get_stock_data();
+    // }
 
     const auto &performance() const { return broker_agg_.performance(); }
 
@@ -39,6 +63,7 @@ class Cerebro {
 
   private:
     // std::vector<int> asset_broker_map_
+    // std::shared_ptr<feeds::PriceDataImpl> price_data_impl; // 變更為 shared_ptr 來指向同一個資料
     feeds::PriceFeedAggragator price_feeds_agg_;
     feeds::CommonFeedAggragator common_feeds_agg_;
 
@@ -51,17 +76,16 @@ class Cerebro {
 };
 
 void Cerebro::add_broker(broker::BaseBroker broker, int window) {
-    // std::cout << "add_broker test started.." << std::endl; 
+    std::cout << "add_broker test started.." << std::endl;
     price_feeds_agg_.add_feed(broker.feed());
-    // std::cout << "add_broker test test01.." << std::endl;
-    price_feeds_agg_.set_window(price_feeds_agg_.datas().size() - 1, window);
-    // std::cout << "add_broker test test02.." << std::endl;
+    // price_feeds_agg_.set_window(price_feeds_agg_.datas().size() - 1, window);
+    std::cout << "add_broker test test02.." << std::endl;
     broker_agg_.add_broker(broker);
-    // std::cout << "add_broker test finished.." << std::endl;
+    std::cout << "add_broker test finished.." << std::endl;
 }
 void Cerebro::add_common_data(feeds::BaseCommonDataFeed data, int window) {
     common_feeds_agg_.add_feed(data);
-    common_feeds_agg_.set_window(common_feeds_agg_.datas().size() - 1, window);
+    // common_feeds_agg_.set_window(common_feeds_agg_.datas().size() - 1, window);
 };
 
 void Cerebro::add_strategy(std::shared_ptr<strategy::GenericStrategy> strategy) {
@@ -79,60 +103,85 @@ inline void Cerebro::set_range(const date &start, const date &end) {
 
 void Cerebro::run() {
     if (verbose_ == VerboseLevel::AllInfo)
-        fmt::print(fmt::fg(fmt::color::yellow), "Runnng strategy..\n");
-    // fmt::print("Start init strategy..\n");
-    init_strategy();
-    // fmt::print("Finished init strategy..\n");
+        fmt::print(fmt::fg(fmt::color::yellow), "Running strategy with multiple stocks..\n");
+
+    init_strategy(); // 初始化策略
+
+    ptime previous_time = boost::posix_time::not_a_date_time; // 记录上一次的时间
+    fmt::print("previous_time initialized 1: {}\n",
+               boost::posix_time::to_simple_string(previous_time));
+
     while (!price_feeds_agg_.finished()) {
-        spdlog::stopwatch sw;
+        // std::cout << "price_feeds_agg_.finished() is false" << std::endl;
+        spdlog::stopwatch sw; // 用于记录时间
         if (price_feeds_agg_.time() > end_) {
-            break;
-            }
-        if (!price_feeds_agg_.read()){
+            fmt::print("End of the range.\n");
             break;
         }
-            
-        common_feeds_agg_.read();
-        if (price_feeds_agg_.time() >= start_) {
-            if (verbose_ == VerboseLevel::AllInfo)
-                try {
 
-                // fmt::print(fmt::runtime("┌{0:─^{2}}┐\n"
-                //                         "│{1: ^{2}}│\n"
-                //                         "└{0:─^{2}}┘\n"),
-                //            "", util::to_string(price_feeds_agg_.time()), 21);
-                
-            } catch (const std::exception& e) {
-                std::cerr << "錯誤: - " << e.what() << '\n';
+        if (!price_feeds_agg_.read()) {
+            fmt::print("End of the range2.\n");
+            break;
+        }
 
+        // 获取当前时间
+        ptime current_time = price_feeds_agg_.time();
+        // fmt::print("times_[i]: {}\n", boost::posix_time::to_simple_string(current_time));
+
+        // common_feeds_agg_.read();
+
+        bool next_index_date_change = *price_feeds_agg_.get_next_index_date_change();
+
+        // 判断是否在指定时间范围内
+        if (current_time >= start_) {
+            try {
+
+                // 如果日期发生变化，则增加 time_index_
+                if (current_time.date() != previous_time.date()) {
+                    fmt::print("Date changed from {} to {}. Incrementing time_index_\n",
+                               boost::gregorian::to_iso_extended_string(previous_time.date()),
+                               boost::gregorian::to_iso_extended_string(current_time.date()));
+
+                    strategy_->time_index_++;     // 日期变化时增加时间步长
+                    previous_time = current_time; // 更新上一次的时间
+                }
+
+                if (previous_time.is_not_a_date_time()) {
+                    previous_time = current_time;
+                    fmt::print("previous_time initialized 2: {}\n",
+                               boost::posix_time::to_simple_string(previous_time));
+                }
+
+                broker_agg_.update_current_map();
+                broker_agg_.process_old_orders(price_feeds_agg_.datas());
+                if (next_index_date_change) {
+                    auto order_pool = strategy_->execute();
+                    if (!order_pool.orders.empty()) {
+                        broker_agg_.process(order_pool, price_feeds_agg_.datas());
+                    }
+                    broker_agg_.process_terms();
+                    broker_agg_.update_info();
+
+                    if (verbose_ == VerboseLevel::AllInfo) {
+                        // std::cout << "cash: " << broker_agg_.cash(0) << ",  total_wealth: "
+                        //           << broker_agg_.total_wealth() << std::endl;
+                        // fmt::print("cash: {:12.4f},  total_wealth: {:12.2f}\n",
+                        //            broker_agg_.total_cash(), broker_agg_.total_wealth());
+                        fmt::print("Using {} seconds.\n", util::sw_to_seconds(sw));
+                    }
+                }
+
+            } catch (const std::exception &e) {
+                std::cout << "錯誤: - " << e.what() << '\n';
             }
-                
-            // fmt::print("{}\n", util::to_string(feeds_agg_.time()));
-            // fmt::print("process old orders\n");
-            broker_agg_.process_old_orders();
-            // fmt::print("Start execute strategy_\n");
-            auto order_pool = strategy_->execute();
-            // fmt::print("Start process order_pool\n");
-            broker_agg_.process(order_pool);
-            // fmt::print("Start process_terms\n");
-            broker_agg_.process_terms();
-            // fmt::print("Start update_info\n");
-            broker_agg_.update_info();
-            // fmt::print("Finished update_info\n");
-            
-
-            if (verbose_ == VerboseLevel::AllInfo) {
-                // fmt::print("cash: {:12.4f},  total_wealth: {:12.2f}\n", broker_agg_.total_cash(),
-                           broker_agg_.total_wealth();
-                // fmt::print("Using {} seconds.\n", util::sw_to_seconds(sw));
-            }
-            // fmt::print("The test number is: {:d}\n", 409);
         }
     }
+
+    // 打印总结信息
     if (verbose_ == VerboseLevel::OnlySummary || verbose_ == VerboseLevel::AllInfo)
         broker_agg_.summary();
+
     strategy_->finish_all();
-    // strategy_-
 }
 
 void Cerebro::reset() {

@@ -37,7 +37,7 @@ enum OrderState { Success, Waiting, Expired };
 enum class Sel { All };
 
 struct OHLCData {
-    VecArrXd open, high, low, close;
+    double open, high, low, close;
     void resize(int assets);
     void reset();
 };
@@ -53,6 +53,8 @@ struct PriceFeedData {
     std::unordered_map<std::string, VecArrXd> num_data_;
     std::unordered_map<std::string, std::vector<std::string>> str_data_;
 
+    std::string ticker_; // 股票代號
+
     void validate_assets();
     void resize(int assets);
 
@@ -67,6 +69,10 @@ template <typename T> class FeedDataBuffer {
   public:
     FeedDataBuffer() = default;
     FeedDataBuffer(int window) : window_(window) { set_window(window_); }
+    FeedDataBuffer(const PriceFeedData &data) {
+        data_.push_back(data.data);
+        window_ = 1;
+    }
 
     const T &data(int time = -1) const { return data_[time]; }
     const auto &datas() const { return data_; }
@@ -156,6 +162,20 @@ class PriceFeedDataBuffer : public FeedDataBuffer<PriceFeedData> {
     // const auto &str(int k, const std::string &name) const;
     // const auto &str(const std::string &name) const;
 
+    // 假設有一個方法可以將數據載入
+    void load_from_price_feed_data(const PriceFeedData &price_feed_data) {
+        // time = price_feed_data.time;
+
+        // 複製開盤價
+        this->open(-1) = price_feed_data.data.open; // 假設 open_data 是一個資料成員
+        this->high(-1) = price_feed_data.data.high;
+        this->low(-1) = price_feed_data.data.low;
+        this->close(-1) = price_feed_data.data.close;
+        this->adj_close(-1) = price_feed_data.adj_data.close;
+
+        this->volume(-1) = price_feed_data.volume.sum(); // 假設是累加成交量
+    }
+
   private:
     int assets_ = 0;
 };
@@ -217,6 +237,7 @@ struct Order {
     int asset;
     double price = 0;
     int volume = 0;
+    int time_index = 0;
     double value = 0; // price*volume
     double fee = 0;   // Commission + tax
     bool processed = false;
@@ -250,7 +271,7 @@ struct Portfolio {
     int position(int asset) const;
     double profit(int asset) const;
 
-    VecArrXi positions(int total_assets) const;
+    std::unordered_map<int, int> positions() const;
     VecArrXd values(int total_assets) const;
     VecArrXd profits(int total_assets) const;
     VecArrXd adj_profits(int total_assets) const;
@@ -264,6 +285,7 @@ struct Portfolio {
 
     void reset() { *this = Portfolio(); }
 };
+// Portfolio Member Accessor for single variable (like `profit`)
 #define BK_DEFINE_PORTFOLIO_MEMBER_ACCESSOR(var, type, default_val)                                \
     inline type Portfolio::var(int asset) const {                                                  \
         auto it = portfolio_items.find(asset);                                                     \
@@ -273,26 +295,56 @@ struct Portfolio {
             return default_val;                                                                    \
         }                                                                                          \
     }
-BK_DEFINE_PORTFOLIO_MEMBER_ACCESSOR(position, int, 0);
+
+// Define accessor for single `profit`
 BK_DEFINE_PORTFOLIO_MEMBER_ACCESSOR(profit, double, 0);
 #undef BK_DEFINE_PORTFOLIO_MEMBER_ACCESSOR
 
+// Portfolio Member Accessor for vectors (like `profits`)
 #define BK_DEFINE_PORTFOLIO_MEMBER_VEC_ACCESSOR(name, type, default_val)                           \
     inline type Portfolio::name##s(int total_assets) const {                                       \
         type res(total_assets);                                                                    \
         res.setConstant(default_val);                                                              \
         for (const auto &[k, v] : portfolio_items) {                                               \
-            res.coeffRef(k) = v.name;                                                              \
+            if (k < total_assets) {                                                                \
+                res.coeffRef(k) = v.name;                                                          \
+            }                                                                                      \
         }                                                                                          \
         return res;                                                                                \
     }
 
-BK_DEFINE_PORTFOLIO_MEMBER_VEC_ACCESSOR(position, VecArrXi, 0)
-BK_DEFINE_PORTFOLIO_MEMBER_VEC_ACCESSOR(value, VecArrXd, 0)
-BK_DEFINE_PORTFOLIO_MEMBER_VEC_ACCESSOR(profit, VecArrXd, 0)
-BK_DEFINE_PORTFOLIO_MEMBER_VEC_ACCESSOR(adj_profit, VecArrXd, 0)
-BK_DEFINE_PORTFOLIO_MEMBER_VEC_ACCESSOR(dyn_adj_profit, VecArrXd, 0)
+// Define accessors for vector-based variables like `profits`, `adj_profit`
+BK_DEFINE_PORTFOLIO_MEMBER_VEC_ACCESSOR(value, VecArrXd, 0.0)
+BK_DEFINE_PORTFOLIO_MEMBER_VEC_ACCESSOR(profit, VecArrXd, 0.0)
+BK_DEFINE_PORTFOLIO_MEMBER_VEC_ACCESSOR(adj_profit, VecArrXd, 0.0)
+BK_DEFINE_PORTFOLIO_MEMBER_VEC_ACCESSOR(dyn_adj_profit, VecArrXd, 0.0)
 #undef BK_DEFINE_PORTFOLIO_MEMBER_VEC_ACCESSOR
+
+
+// Single asset access (int or double)
+#define BK_DEFINE_PORTFOLIO_MEMBER_ACCESSOR_V2(var, type, default_val)                                \
+    inline type Portfolio::var(int asset) const {                                                  \
+        auto it = portfolio_items.find(asset);                                                     \
+        if (it != portfolio_items.end()) {                                                         \
+            return it->second.var;                                                                 \
+        } else {                                                                                   \
+            return default_val;                                                                    \
+        }                                                                                          \
+    }
+BK_DEFINE_PORTFOLIO_MEMBER_ACCESSOR_V2(position, int, 0)
+
+// Multi-asset vector access, modified to use unordered_map
+#define BK_DEFINE_PORTFOLIO_MEMBER_ACCESSOR_V2(name, type, default_val)                           \
+    inline std::unordered_map<int, type> Portfolio::name##s() const {                              \
+        std::unordered_map<int, type> res;                                                         \
+        for (const auto &[asset_id, item] : portfolio_items) {                                     \
+            res[asset_id] = item.name;                                                             \
+        }                                                                                          \
+        return res;                                                                                \
+    }
+
+BK_DEFINE_PORTFOLIO_MEMBER_ACCESSOR_V2(position, int, 0)
+#undef BK_DEFINE_PORTFOLIO_MEMBER_ACCESSOR_V2
 
 #define BK_DEFINE_FeedDataBuffer_EXTRA_ACCESSOS(name)                                              \
     template <typename T>                                                                          \
@@ -311,37 +363,49 @@ BK_DEFINE_FeedDataBuffer_EXTRA_ACCESSOS(str);
 #undef BK_DEFINE_FULLASSETDATA_EXTRA_ACCESSOS
 
 inline void Portfolio::update(const Order &order, double adj_price) {
-    int asset = order.asset;
-    auto it = portfolio_items.find(asset);
-    cash -= (order.value + order.fee);
-    if (it != portfolio_items.end()) { // Found
-        auto &item = it->second;
-        // Buy
-        if (order.volume > 0) {
-            item.profit += (order.price - item.prev_price) * item.position;
-            double adj_profit_diff = (adj_price - item.prev_adj_price) * item.position;
-            item.adj_profit += adj_profit_diff;
-            item.dyn_adj_profit += adj_profit_diff;
+    // std::cout << "Updating portfolio for order: " << order.asset << std::endl;
+    try {
+        int asset = order.asset;
+        auto it = portfolio_items.find(asset);
+        // std::cout << "order value: " << order.value << std::endl;   
+        cash -= (order.value + order.fee);
+        // std::cout << "Cash: " << cash << std::endl;
+        if (it != portfolio_items.end()) { // Found
+        std::cout << "Found" << std::endl;
+            auto &item = it->second;
+            // Buy
+            if (order.volume > 0) {
+                std::cout << "Buying" << std::endl;
+                item.profit += (order.price - item.prev_price) * item.position;
+                double adj_profit_diff = (adj_price - item.prev_adj_price) * item.position;
+                item.adj_profit += adj_profit_diff;
+                item.dyn_adj_profit += adj_profit_diff;
+            } else {
+                std::cout << "Selling" << std::endl;
+                double cash_diff =
+                    (item.dyn_adj_profit - item.profit) * ((-order.volume) / item.position);
+                cash += cash_diff;
+                item.dyn_adj_profit -= cash_diff;
+            }
+            item.position += order.volume;
+            item.value += order.value;
+            if (item.position == 0) {
+                portfolio_items.erase(it);
+            }
         } else {
-            double cash_diff =
-                (item.dyn_adj_profit - item.profit) * ((-order.volume) / item.position);
-            cash += cash_diff;
-            item.dyn_adj_profit -= cash_diff;
+            std::cout << "Not found" << std::endl;
+            portfolio_items[asset] = {.position = order.volume,
+                                      .prev_price = order.price,
+                                      .prev_adj_price = adj_price,
+                                      .buying_time = order.processed_at,
+                                      .value = order.value,
+                                      .profit = -order.fee,
+                                      .dyn_adj_profit = -order.fee,
+                                      .adj_profit = -order.fee};
         }
-        item.position += order.volume;
-        item.value += order.value;
-        if (item.position == 0) {
-            portfolio_items.erase(it);
-        }
-    } else {
-        portfolio_items[asset] = {.position = order.volume,
-                                  .prev_price = order.price,
-                                  .prev_adj_price = adj_price,
-                                  .buying_time = order.processed_at,
-                                  .value = order.value,
-                                  .profit = -order.fee,
-                                  .dyn_adj_profit = -order.fee,
-                                  .adj_profit = -order.fee};
+    } catch (const std::exception &e) {
+        std::cout << "Exception in update for order: " << order.asset << ": " << e.what()
+                  << std::endl;
     }
 }
 
@@ -366,15 +430,26 @@ inline void PortfolioItem::update_value(const ptime &date, double new_price, dou
     prev_adj_price = new_adj_price;
 }
 
+// inline void OHLCData::resize(int assets) {
+//     for (auto &ele : {&open, &high, &low, &close}) {
+//         ele->resize(assets);
+//     }
+// }
+// inline void OHLCData::reset() {
+//     for (auto &ele : {&open, &high, &low, &close}) {
+//         ele->setConstant(0);
+//     }
+// }
+
 inline void OHLCData::resize(int assets) {
-    for (auto &ele : {&open, &high, &low, &close}) {
-        ele->resize(assets);
-    }
+    // `double` 不需要 resize，這裡可以留空或者刪除該函式
 }
+
 inline void OHLCData::reset() {
-    for (auto &ele : {&open, &high, &low, &close}) {
-        ele->setConstant(0);
-    }
+    open = 0.0;
+    high = 0.0;
+    low = 0.0;
+    close = 0.0;
 }
 
 inline PriceFeedData::PriceFeedData(int assets) { valid = VecArrXb::Constant(assets, false); }
@@ -397,35 +472,35 @@ inline void PriceFeedData::validate_assets() {
     valid = (data.open > 0) && (data.high > 0) && (data.low > 0) && (data.close > 0);
 }
 
-#define BK_DEFINE_STRATEGYDATA_OHLC_MEMBER_ACCESSOR(data, var, fun)                                \
-    inline VecArrXd PriceFeedDataBuffer::fun(int time) const {                                     \
-        return data_[window_ + time].data.var;                                                     \
-    };                                                                                             \
-    inline double PriceFeedDataBuffer::fun(int time, int stock) const {                            \
-        return data_[window_ + time].data.var.coeff(stock);                                        \
-    }                                                                                              \
-    inline VecArrXd PriceFeedDataBuffer::fun(Sel s, int stock) const {                             \
-        VecArrXd res(window_);                                                                     \
-        for (int i = 0; i < data_.size(); ++i) {                                                   \
-            res.coeffRef(i) = data_[i].data.var.coeff(stock);                                      \
-        }                                                                                          \
-        return res;                                                                                \
-    }                                                                                              \
-    template <typename Ret> inline Ret PriceFeedDataBuffer::fun(Sel r, Sel c) const {              \
-        Ret res(window_, assets_);                                                                 \
-        for (int i = 0; i < data_.size(); ++i) {                                                   \
-            res.row(i) = data_[i].data.var.transpose();                                            \
-        }                                                                                          \
-        return res;                                                                                \
-    }
-#define BK_DEFINE_STRATEGYDATA_MEMBER_ACCESSOR(type1, type2, var)                                  \
-    inline type1 PriceFeedDataBuffer::var(int time) const { return data_[window_ + time].var; };   \
-    inline type2 PriceFeedDataBuffer::var(int time, int stock) const {                             \
-        return data_[window_ + time].var.coeff(stock);                                             \
-    }
+// #define BK_DEFINE_STRATEGYDATA_OHLC_MEMBER_ACCESSOR(data, var, fun)                                \
+//     inline VecArrXd PriceFeedDataBuffer::fun(int time) const {                                     \
+//         return data_[window_ + time].data.var;                                                     \
+//     };                                                                                             \
+//     inline double PriceFeedDataBuffer::fun(int time, int stock) const {                            \
+//         return data_[window_ + time].data.var.coeff(stock);                                        \
+//     }                                                                                              \
+//     inline VecArrXd PriceFeedDataBuffer::fun(Sel s, int stock) const {                             \
+//         VecArrXd res(window_);                                                                     \
+//         for (int i = 0; i < data_.size(); ++i) {                                                   \
+//             res.coeffRef(i) = data_[i].data.var.coeff(stock);                                      \
+//         }                                                                                          \
+//         return res;                                                                                \
+//     }                                                                                              \
+//     template <typename Ret> inline Ret PriceFeedDataBuffer::fun(Sel r, Sel c) const {              \
+//         Ret res(window_, assets_);                                                                 \
+//         for (int i = 0; i < data_.size(); ++i) {                                                   \
+//             res.row(i) = data_[i].data.var.transpose();                                            \
+//         }                                                                                          \
+//         return res;                                                                                \
+//     }
+// #define BK_DEFINE_STRATEGYDATA_MEMBER_ACCESSOR(type1, type2, var)                                  \
+//     inline type1 PriceFeedDataBuffer::var(int time) const { return data_[window_ + time].var; };   \
+//     inline type2 PriceFeedDataBuffer::var(int time, int stock) const {                             \
+//         return data_[window_ + time].var.coeff(stock);                                             \
+//     }
 
 inline PriceFeedDataBuffer::PriceFeedDataBuffer(int assets, int window)
-    : FeedDataBuffer(window), assets_(assets){};
+    : FeedDataBuffer(window), assets_(assets) {};
 inline backtradercpp::PriceFeedDataBuffer::PriceFeedDataBuffer(const PriceFeedData &data,
                                                                int window)
     : FeedDataBuffer(window), assets_(data.volume.size()) {
@@ -433,22 +508,46 @@ inline backtradercpp::PriceFeedDataBuffer::PriceFeedDataBuffer(const PriceFeedDa
 }
 // const FeedData &PriceFeedDataBuffer::data(int time) const
 
-BK_DEFINE_STRATEGYDATA_OHLC_MEMBER_ACCESSOR(data, open, open);
-BK_DEFINE_STRATEGYDATA_OHLC_MEMBER_ACCESSOR(data, high, high);
-BK_DEFINE_STRATEGYDATA_OHLC_MEMBER_ACCESSOR(data, low, low);
-BK_DEFINE_STRATEGYDATA_OHLC_MEMBER_ACCESSOR(data, close, close);
+// BK_DEFINE_STRATEGYDATA_OHLC_MEMBER_ACCESSOR(data, open, open);
+// BK_DEFINE_STRATEGYDATA_OHLC_MEMBER_ACCESSOR(data, high, high);
+// BK_DEFINE_STRATEGYDATA_OHLC_MEMBER_ACCESSOR(data, low, low);
+// BK_DEFINE_STRATEGYDATA_OHLC_MEMBER_ACCESSOR(data, close, close);
 
-BK_DEFINE_STRATEGYDATA_OHLC_MEMBER_ACCESSOR(adj_data, open, adj_open);
-BK_DEFINE_STRATEGYDATA_OHLC_MEMBER_ACCESSOR(adj_data, high, adj_high);
-BK_DEFINE_STRATEGYDATA_OHLC_MEMBER_ACCESSOR(adj_data, low, adj_low);
-BK_DEFINE_STRATEGYDATA_OHLC_MEMBER_ACCESSOR(adj_data, close, adj_close);
+// BK_DEFINE_STRATEGYDATA_OHLC_MEMBER_ACCESSOR(adj_data, open, adj_open);
+// BK_DEFINE_STRATEGYDATA_OHLC_MEMBER_ACCESSOR(adj_data, high, adj_high);
+// BK_DEFINE_STRATEGYDATA_OHLC_MEMBER_ACCESSOR(adj_data, low, adj_low);
+// BK_DEFINE_STRATEGYDATA_OHLC_MEMBER_ACCESSOR(adj_data, close, adj_close);
 
-BK_DEFINE_STRATEGYDATA_MEMBER_ACCESSOR(VecArrXi, int, volume);
-BK_DEFINE_STRATEGYDATA_MEMBER_ACCESSOR(VecArrXb, bool, valid);
+// BK_DEFINE_STRATEGYDATA_MEMBER_ACCESSOR(VecArrXi, int, volume);
+// BK_DEFINE_STRATEGYDATA_MEMBER_ACCESSOR(VecArrXb, bool, valid);
 
-// template <typename T> void FeedDataBuffer<T>::set_window(int window)
+// // template <typename T> void FeedDataBuffer<T>::set_window(int window)
+// #undef BK_DEFINE_STRATEGYDATA_OHLC_MEMBER_ACCESSOR
+// #undef BK_DEFINE_STRATEGYDATA_MEMBER_ACCESSOR
+
+#define BK_DEFINE_STRATEGYDATA_OHLC_MEMBER_ACCESSOR(data, var, fun)                                \
+    inline double PriceFeedDataBuffer::fun(int time) const {                                       \
+        return data_[window_ + time].data.var;                                                     \
+    }                                                                                              \
+    inline double PriceFeedDataBuffer::fun(int time, int /*stock*/) const {                        \
+        return data_[window_ + time].data.var;                                                     \
+    }                                                                                              \
+    inline VecArrXd PriceFeedDataBuffer::fun(Sel s, int /*stock*/) const {                         \
+        VecArrXd res(window_);                                                                     \
+        for (int i = 0; i < std::min(static_cast<int>(data_.size()), window_); ++i) {              \
+            res.coeffRef(i) = data_[i].data.var;                                                   \
+        }                                                                                          \
+        return res;                                                                                \
+    }                                                                                              \
+    template <typename Ret> inline Ret PriceFeedDataBuffer::fun(Sel r, Sel c) const {              \
+        Ret res(window_, assets_);                                                                 \
+        for (int i = 0; i < std::min(static_cast<int>(data_.size()), window_); ++i) {              \
+            res.row(i).setConstant(data_[i].data.var);                                             \
+        }                                                                                          \
+        return res;                                                                                \
+    }
+
 #undef BK_DEFINE_STRATEGYDATA_OHLC_MEMBER_ACCESSOR
-#undef BK_DEFINE_STRATEGYDATA_MEMBER_ACCESSOR
 
 inline void Portfolio::transfer_stock(ptime time, int asset, int volume) {
     auto it = portfolio_items.find(asset);
