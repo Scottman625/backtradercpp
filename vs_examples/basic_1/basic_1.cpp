@@ -119,7 +119,7 @@ void runBacktrader(const std::vector<std::vector<std::string>> &data,
 
         cerebro.run();
     } catch (const std::exception &e) {
-        std::cerr << "Error: " << e.what() << std::endl;
+        // std::cerr << "Error: " << e.what() << std::endl;
     }
 }
 

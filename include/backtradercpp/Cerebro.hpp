@@ -177,7 +177,7 @@ void Cerebro::run() {
         }
     }
 
-    // 打印总结信息
+    // 打印總結信息
     if (verbose_ == VerboseLevel::OnlySummary || verbose_ == VerboseLevel::AllInfo)
         broker_agg_.summary();
 

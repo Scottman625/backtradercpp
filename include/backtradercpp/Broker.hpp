@@ -539,15 +539,16 @@ BaseBrokerImpl::process(Order &order,
     // std::cout << "Processing order for asset: " << asset << std::endl;
     try {
         // 使用資產代碼在 datas 中查找對應的數據向量
-        auto it = datas_.find(std::to_string(asset));
-        if (it == datas_.end()) {
+        auto it = current_map_.find(std::to_string(asset));
+        if (it == current_map_.end()) {
             // exit(0);
-            throw std::runtime_error("Asset ID not found in datas map");
+            return;
+            // throw std::runtime_error("Asset ID not found in datas map");
             // return;
         }
 
         // 獲取最新的 PriceFeedData（假設每支股票的數據是按時間排序的）
-        PriceFeedData *current_data = &(it->second.back());
+        PriceFeedData* current_data = it->second;
 
         // std::cout << "Price: " << order.price << ", Low: " << current_data->data.low
         //               << ", High: " << current_data->data.high << std::endl;
@@ -744,27 +745,27 @@ void BaseBrokerImpl::set_feed(feeds::PriceData data) {
     feed_ = data;
     std::cout << "Setting feed: " << data.name() << std::endl;
 
-    // 正确获取资产数量
+    // 正確獲取資產數量
     analyzer_.set_name(data.name());
-    resize(data.assets()); // 现在能够正确获取 assets 数量
+    resize(data.assets()); 
     codes_ = data.codes();
 
     std::cout << "CODES_SIZE: " << codes_.size() << std::endl;
 
-    // // 转换 sp 到具体的 PriceDataImpl
+    // // 轉換 sp 到具體的 PriceDataImpl
     feeds::PriceDataImpl *price_data_impl = static_cast<feeds::PriceDataImpl *>(data.sp.get());
     if (!price_data_impl) {
         throw std::runtime_error("Failed to cast BasePriceDataImpl to PriceDataImpl.");
     }
 
-    // 将数据存入 current_map_
+    // 將數據存入 current_map_
     for (int i = 0; i < data.assets(); ++i) {
-        std::string code = data.codes()[i]; // 获取每个资产的代码（股票代码）
+        std::string code = data.codes()[i]; // 獲取每個資產的代碼（股票代碼）
         set_data_ptr(
-            code, price_data_impl->data_ptr()); // 使用股票代码作为键将 data_ptr 存入 current_map_
+            code, price_data_impl->data_ptr()); // 使用股票代碼作為鍵將 data_ptr 存入 current_map_
     }
 
-    // 确保数据正确被存入
+    // 確保數據正確被存入
     std::cout << "CODES_SIZE: " << codes_.size() << std::endl;
 }
 

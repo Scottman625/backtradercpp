@@ -356,22 +356,22 @@ inline void PriceDataImpl::cast_ohlc_data_(std::vector<std::string> &row_string,
     }
 
     try {
-        // 修剪并解析开盘价
+        // 修剪並解析開盤價
         boost::algorithm::trim(row_string[3]);
         dest.open = boost::lexical_cast<double>(row_string[3]);
         // std::cout << "today open: " << row_string[3] << std::endl;
 
-        // 修剪并解析最高价
+        // 修剪並解析收盤價
         boost::algorithm::trim(row_string[4]);
         dest.close = boost::lexical_cast<double>(row_string[4]);
         // std::cout << "today close: " << row_string[4] << std::endl;
 
-        // 修剪并解析最低价
+        // 修剪並解析最高價
         boost::algorithm::trim(row_string[5]);
         dest.high = boost::lexical_cast<double>(row_string[5]);
         // std::cout << "today high: " << row_string[5] << std::endl;
 
-        // 修剪并解析收盘价
+        // 修剪並解析最低價
         boost::algorithm::trim(row_string[6]);
         dest.low = boost::lexical_cast<double>(row_string[6]);
         // std::cout << "today low: " << row_string[6] << std::endl;
